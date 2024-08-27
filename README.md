@@ -16,8 +16,6 @@ This project implements a 2D rectangle packing algorithm using Ant Colony Optimi
 - [Usage](#usage)
 - [Customization](#customization)
 - [Visualization](#visualization)
-- [Contributing](#contributing)
-- [License](#license)
 
 ## Background
 
