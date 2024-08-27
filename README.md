@@ -37,7 +37,7 @@ In the context of the 2D bin packing problem, ACO is used to simulate ants that 
 
 In this implementation, we use a heuristic based on the area of the rectangles. Larger rectangles are given higher priority when being placed in the bin, as they are typically more challenging to fit in later stages of the packing process. The heuristic is calculated as the square of the rectangle's area:
 
-\[ \text{Heuristic} = (\text{width} \times \text{height})^2 \]
+\text{Heuristic} = (\text{width} \times \text{height})^2
 
 This heuristic ensures that the ACO algorithm tends to place larger rectangles first, reducing the chances of leaving large, awkward spaces in the bin that are difficult to fill later.
 
