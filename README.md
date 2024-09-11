@@ -1,5 +1,8 @@
 # 2D Rectangle Packing with Ant Colony Optimization
 
+![Veed Video Aug 27](https://github.com/user-attachments/assets/dc8677fc-9078-491f-9f0f-9c7b103019e7)
+
+
 ## Overview
 
 This project implements a 2D rectangle packing algorithm using Ant Colony Optimization (ACO). The goal is to efficiently pack a set of rectangles of varying dimensions into a fixed-size bin with minimal unused space. The project includes a dynamic visualization to observe the packing process in real-time.
