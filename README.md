@@ -30,6 +30,10 @@ Then visit http://localhost:8000.
 
 Run the solver tests with `node web/solver.test.js`.
 
+### Deploy to Vercel
+
+`vercel.json` serves `web/` as a static site with no build step. Import the repo at vercel.com/new and keep the defaults, or deploy from the CLI with `npx vercel` from the repo root.
+
 ## The algorithm
 
 ### Construction (one ant)
