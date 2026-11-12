@@ -1,5 +1,7 @@
 # 2D Rectangle Packing with Ant Colony Optimization
 
+**Try it live: [bin-packing-aco.vercel.app](https://bin-packing-aco.vercel.app)**
+
 ![Veed Video Aug 27](https://github.com/user-attachments/assets/dc8677fc-9078-491f-9f0f-9c7b103019e7)
 
 
@@ -12,7 +14,7 @@ This project packs rectangles onto fixed-size sheets with Ant Colony Optimizatio
 
 ## Web app
 
-Open `web/index.html` through any static server (Web Workers don't run from `file://`):
+Live at **https://bin-packing-aco.vercel.app**. To run it locally, serve `web/` with any static server (Web Workers don't run from `file://`):
 
 ```bash
 python3 -m http.server 8000 --directory web
@@ -29,6 +31,10 @@ Then visit http://localhost:8000.
   - *Replay the winning ant* steps through each decision the best ant made. It shows every candidate's pheromone τ, heuristic η and probability, the random draw, and where each candidate would have landed.
 
 Run the solver tests with `node web/solver.test.js`.
+
+### Deploy to Vercel
+
+`vercel.json` serves `web/` as a static site with no build step. Import the repo at vercel.com/new and keep the defaults, or deploy from the CLI with `npx vercel` from the repo root.
 
 ## The algorithm
 
@@ -61,17 +67,13 @@ Squaring the fill rewards packing early sheets full and leaving the last one nea
 
 A greedy pass (always take the highest η, no pheromone) runs first. It seeds `tau_max` and serves as the baseline the colony has to beat.
 
-## What was wrong with the first version
+## Changes from v1
 
-| Problem | Effect |
-| --- | --- |
-| `update_pheromones` added to `pheromones[0..k-1]`, where k is the number of packed rects | Pheromone went to the largest rectangles by sort order, not to the ones that were packed. In practice every value converged to the same number. |
-| All ants shared one list of `Rectangle` objects across threads and wrote `x`, `y` and rotation onto them | Ants overwrote each other's layouts. On an over-full instance (90 rects), the returned "best" solution had 66 overlapping pairs, negative fitness and pheromone values of 1.9e8. |
-| Heuristic was `area**4`, then squared again in the probability | Selection was effectively area⁸. A 4×4 box was about 4 billion times more likely than a 1×1, so pheromone had no influence and ants were almost deterministic. |
-| Unplaced rectangles were dropped and never counted | The `unplaced_area` term in fitness was always 0. |
-| The animation re-ran a greedy packing in sorted order | The ACO result was never shown. |
-| Integer `x, y` grid scan | Decimal sizes, metric/imperial and kerf were impossible. Each placement also cost O(W·H·n). |
-| One pheromone value per rectangle | Even when computed correctly, this can't express order or which boxes pack well together. |
+- **Pheromone now reflects what each ant actually packed.** It lives on "after box A, place box B" pairs instead of one value per rectangle, so the colony can learn ordering.
+- **Each ant builds its layout independently.** Ants no longer share rectangle objects, so a layout can't be changed by another ant mid-run.
+- **The heuristic is balanced with pheromone.** v1 weighted by area⁸, which left little room for learning.
+- **The visualization shows the layout the colony actually found.**
+- **Continuous placement (MaxRects)** replaces the integer grid scan. This adds decimal sizes, kerf, metric and imperial units, and multiple sheets.
 
 ## Python usage
 
