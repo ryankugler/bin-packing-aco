@@ -1,70 +1,49 @@
-import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
+COLORS = plt.get_cmap("tab10").colors
 
-def draw_rectangles(ax, rectangles, color, is_remaining=False):
-    current_x, current_y = 0, 0
-    padding = 0.2  # Padding between rectangles
 
-    for rect in rectangles:
-        if is_remaining:
-            rect.x, rect.y = current_x, current_y
-            current_x += rect.width + padding
+def run_animation(packer, best, greedy):
+    """Animate the best layout the colony found, part by part, next to its convergence curve."""
+    sheets = best.sheets
+    n = len(sheets)
+    fig = plt.figure(figsize=(4 * n + 5, 5))
+    axes = [fig.add_subplot(1, n + 1, i + 1) for i in range(n)]
+    conv = fig.add_subplot(1, n + 1, n + 1)
 
-            # TODO: Change animation of remaining rectangles to something more visually appealing?
-            # if current_x + rect.width > ax.get_xlim()[1]:  # Move to the next line if out of bounds
-            #     current_x = 0
-            #     current_y += rect.height + padding
+    for i, ax in enumerate(axes):
+        ax.set_xlim(0, packer.sheet_w)
+        ax.set_ylim(packer.sheet_h, 0)  # y grows downward, matching the solver
+        ax.set_aspect("equal")
+        ax.set_title(f"Sheet {i + 1} ({best.fills[i]:.0%} full)")
+        ax.add_patch(patches.Rectangle((0, 0), packer.sheet_w, packer.sheet_h, fill=False, edgecolor="black"))
 
-        ax.add_patch(
-            patches.Rectangle(
-                (rect.x, rect.y),  # Position of rectangle
-                rect.width,        # Width of rectangle
-                rect.height,       # Height of rectangle
-                edgecolor='black', # Edge color of rectangle
-                facecolor=color,   # Fill color of rectangle
-                fill=True          # Fill rectangle
-            )
-        )
+    h = packer.history
+    its = [x["it"] for x in h]
+    conv.plot(its, [x["mean"] for x in h], ":", color="grey", label="average ant")
+    conv.plot(its, [x["iter_best"] for x in h], color="tab:blue", lw=1, label="best ant this iteration")
+    conv.plot(its, [x["best"] for x in h], color="tab:green", lw=2.5, label="best so far")
+    conv.axhline(greedy.fitness, color="goldenrod", ls="--", label="greedy baseline")
+    lo = min(greedy.fitness, min((x["iter_best"] for x in h), default=greedy.fitness))
+    hi = max((x["best"] for x in h), default=greedy.fitness)
+    pad = (hi - lo) * 0.1 or 0.01
+    conv.set_ylim(lo - pad, hi + pad)
+    conv.set_xlabel("iteration")
+    conv.set_ylabel("score (higher is better)")
+    conv.set_title("Convergence")
+    conv.legend(fontsize=8, loc="lower right")
 
-#update the plot for animation
-def update(frame, packed_rectangles, remaining_rectangles, rectangles, bin_size, ax1, ax2, find_position_for_rectangle):
-    if frame < len(rectangles):
-        rect = rectangles[frame]
-        x, y = find_position_for_rectangle(packed_rectangles, rect, bin_size)
-        if x is not None:  # If a valid position is found
-            rect.x, rect.y = x, y
-            packed_rectangles.append(rect)
-            if rect in remaining_rectangles:  # Ensure the rectangle is in the list
-                remaining_rectangles.remove(rect)
-                print(f"Packed rectangle {frame + 1}: {rect.width}x{rect.height} at position ({rect.x}, {rect.y})")
+    order = [(si, p) for si, s in enumerate(sheets) for p in s.parts]
 
-    ax1.clear()
-    ax2.clear()
+    def update(frame):
+        si, p = order[frame]
+        axes[si].add_patch(patches.Rectangle((p.x, p.y), p.w, p.h, edgecolor="black",
+                                             facecolor=COLORS[p.t % len(COLORS)]))
+        return []
 
-    #### Draw packed rectangles ####
-    ax1.set_xlim(0, bin_size[0])
-    ax1.set_ylim(0, bin_size[1])
-    ax1.set_title('Packed Rectangles')
-    draw_rectangles(ax1, packed_rectangles, 'blue')
-
-    #### Draw remaining rectangles ####
-    ax2.set_xlim(0, bin_size[0])  #provide extra space beyond bin size for better visualization
-    ax2.set_ylim(0, bin_size[1])
-    ax2.set_title('Remaining Rectangles')
-    ax2.axis('off')
-    draw_rectangles(ax2, remaining_rectangles, 'grey', is_remaining=True)
-
-# set up and run the animation visualization
-def run_animation(rectangles, bin_size, packed_rectangles, remaining_rectangles, find_position_for_rectangle):
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
-    
-    anim = FuncAnimation(
-        fig, update, 
-        frames=len(rectangles), 
-        fargs=(packed_rectangles, remaining_rectangles, rectangles, bin_size, ax1, ax2, find_position_for_rectangle), 
-        repeat=False, 
-        interval=200
-    )
+    anim = FuncAnimation(fig, update, frames=len(order), interval=120, repeat=False)
+    fig.tight_layout()
     plt.show()
+    return anim

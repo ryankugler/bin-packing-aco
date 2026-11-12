@@ -5,123 +5,87 @@
 
 ## Overview
 
-This project implements a 2D rectangle packing algorithm using Ant Colony Optimization (ACO). The goal is to efficiently pack a set of rectangles of varying dimensions into a fixed-size bin with minimal unused space. The project includes a dynamic visualization to observe the packing process in real-time.
+This project packs rectangles onto fixed-size sheets with Ant Colony Optimization (ACO). It finds layouts that use the fewest, fullest sheets. It comes in two forms that share one algorithm:
 
-## Table of Contents
+- **`web/`**: a browser app (Antcut). You set the sheet size, the boxes, the kerf and the units (mm, cm, m, in, ft), and it shows how the colony reached its layout.
+- **`main.py`**: a Python script that packs random rectangles and animates the result with matplotlib.
 
-- [Background](#background)
-  - [2D Bin Packing Problem](#2d-bin-packing-problem)
-  - [Ant Colony Optimization (ACO)](#ant-colony-optimization-aco)
-  - [Heuristic Used](#heuristic-used)
-- [Algorithm](#algorithm)
-- [Features](#features)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Customization](#customization)
-- [Visualization](#visualization)
+## Web app
 
-## Background
+Open `web/index.html` through any static server (Web Workers don't run from `file://`):
 
-### 2D Bin Packing Problem
+```bash
+python3 -m http.server 8000 --directory web
+```
 
-The 2D Bin Packing Problem is a classic optimization problem where a set of rectangles must be packed into a larger rectangular bin or container. The objective is to minimize the unused space in the bin, which often translates to minimizing the number of bins used or maximizing the utilization of a given bin. This problem has applications in various fields, such as cutting stock problems, warehouse storage, and VLSI design.
+Then visit http://localhost:8000.
 
-The problem is NP-hard, meaning that finding the optimal solution is computationally challenging, especially as the number of rectangles increases. Therefore, heuristic and metaheuristic approaches, like Ant Colony Optimization, are commonly used to find near-optimal solutions in a reasonable time.
+- **Inputs:** sheet width and height, kerf (the gap left between parts), and a list of boxes with name, size, quantity, and whether each may rotate. Imperial accepts fractions (`23 1/4`, `3-1/2`). Any field takes a unit suffix that overrides the current unit (`600mm`, `4ft`, `12"`).
+- **Results:** sheets used, material used, the layout for each sheet, any boxes too big for the sheet, and the gain over a greedy baseline.
+- **Insight:**
+  - *Convergence* plots the best-so-far score, each iteration's best ant and the average ant against the greedy baseline. Ticks mark pheromone resets.
+  - *Decisiveness* plots the entropy of the ants' choices over time.
+  - *Pheromone map* is a heatmap of "after box A, place box B" trails at any iteration.
+  - *Replay the winning ant* steps through each decision the best ant made. It shows every candidate's pheromone τ, heuristic η and probability, the random draw, and where each candidate would have landed.
 
-### Ant Colony Optimization (ACO)
+Run the solver tests with `node web/solver.test.js`.
 
-Ant Colony Optimization is a metaheuristic inspired by the foraging behavior of ants. Ants communicate indirectly through pheromone trails, which influence the paths chosen by other ants. Over time, paths that lead to food sources are reinforced with more pheromones, leading to an emergent optimization process.
+## The algorithm
 
-In the context of the 2D bin packing problem, ACO is used to simulate ants that explore different configurations of packing rectangles. The pheromones guide the ants towards promising configurations, encouraging exploration of solutions that pack the rectangles more efficiently.
+### Construction (one ant)
 
-### Heuristic Used
+1. Boxes are grouped into **types** (same size and rotation rule), so identical boxes share what the colony learns.
+2. With a sheet open, the ant finds the best spot for every remaining type using **MaxRects with best-short-side-fit**. It tries both orientations when rotation is allowed. Positions are continuous, so decimal sizes and kerf work.
+3. Each candidate gets a weight τ<sup>α</sup>·η<sup>β</sup>:
+   - **τ (pheromone)** = `tau[previous type][this type]`. A fresh sheet uses a special "new sheet" row.
+   - **η (heuristic)** = `(area / largest area) × (0.2 + 0.8 × snugness)`, where snugness = box area ÷ area of the free rectangle it would land in. Large boxes go first, and boxes that fill a gap tightly get a boost.
+4. The ant draws one candidate at random in proportion to its weight and places it.
+5. When nothing else fits, the sheet is closed and a new one is opened.
 
-In this implementation, we use a heuristic based on the area of the rectangles. Larger rectangles are given higher priority when being placed in the bin, as they are typically more challenging to fit in later stages of the packing process. The heuristic is calculated as the square of the rectangle's area:
+### Fitness
+
+Falkenauer's bin-packing score, higher is better:
 
 $$
-Heuristic = (width \times height)^2
+f = \frac{1}{N}\sum_{i=1}^{N} \text{fill}_i^2 \; + \; \frac{0.1 \cdot \text{largest offcut on last sheet}}{N}
 $$
 
-This heuristic ensures that the ACO algorithm tends to place larger rectangles first, reducing the chances of leaving large, awkward spaces in the bin that are difficult to fill later.
+Squaring the fill rewards packing early sheets full and leaving the last one nearly empty. That beats spreading the boxes evenly, and it is what lets the search drop a sheet. The offcut bonus breaks ties toward a usable leftover piece.
 
-## Algorithm
+### Learning (MAX-MIN Ant System)
 
-The algorithm used in this project is a combination of Ant Colony Optimization and a heuristic-driven packing strategy. Below is a step-by-step outline of the process:
+- All trails evaporate by `EVAPORATION` each iteration.
+- Only the iteration's best ant deposits (the all-time best every 5th iteration), adding its score to each "A → B" transition it used.
+- Trails are clamped to `[tau_min, tau_max]`, so no option disappears completely.
+- After 25 iterations without improvement, trails reset to `tau_max` (a restart).
 
-1. **Initialization**:
-   - Generate a set of random rectangles with dimensions within specified limits.
-   - Initialize pheromones for each rectangle to guide the ACO process.
+A greedy pass (always take the highest η, no pheromone) runs first. It seeds `tau_max` and serves as the baseline the colony has to beat.
 
-2. **Ant Simulation**:
-   - Each ant simulates the packing of rectangles into the bin.
-   - Rectangles are selected based on a probability influenced by pheromones and the heuristic (area of the rectangles).
-   - Rectangles are attempted to be packed in the bin, considering both their original and rotated orientations.
+## What was wrong with the first version
 
-3. **Pheromone Update**:
-   - After all ants have completed their packing simulations, the pheromones are updated based on the quality (fitness) of the solutions found.
-   - Solutions with lower unused space (higher packing efficiency) reinforce the pheromone trails.
+| Problem | Effect |
+| --- | --- |
+| `update_pheromones` added to `pheromones[0..k-1]`, where k is the number of packed rects | Pheromone went to the largest rectangles by sort order, not to the ones that were packed. In practice every value converged to the same number. |
+| All ants shared one list of `Rectangle` objects across threads and wrote `x`, `y` and rotation onto them | Ants overwrote each other's layouts. On an over-full instance (90 rects), the returned "best" solution had 66 overlapping pairs, negative fitness and pheromone values of 1.9e8. |
+| Heuristic was `area**4`, then squared again in the probability | Selection was effectively area⁸. A 4×4 box was about 4 billion times more likely than a 1×1, so pheromone had no influence and ants were almost deterministic. |
+| Unplaced rectangles were dropped and never counted | The `unplaced_area` term in fitness was always 0. |
+| The animation re-ran a greedy packing in sorted order | The ACO result was never shown. |
+| Integer `x, y` grid scan | Decimal sizes, metric/imperial and kerf were impossible. Each placement also cost O(W·H·n). |
+| One pheromone value per rectangle | Even when computed correctly, this can't express order or which boxes pack well together. |
 
-4. **Iteration**:
-   - The process is repeated for a specified number of iterations.
-   - The best solution found across all iterations is selected as the final packing configuration.
+## Python usage
 
-5. **Visualization**:
-   - The packing process is visualized in real-time, showing both the packed rectangles and the remaining rectangles in separate panes.
+```bash
+pip install -r requirements.txt
+python main.py
+```
 
-## Features
+Edit `constants.py` to change the sheet size, number and size of random rectangles, kerf, rotation, and colony settings (`NUM_ANTS`, `NUM_ITERATIONS`, `ALPHA`, `BETA`, `EVAPORATION`, `SEED`). `aco.py` holds the solver. To pack your own parts, use it directly:
 
-- **Ant Colony Optimization**: Leverages ACO to explore various packing configurations and find the optimal or near-optimal arrangement.
-- **Heuristic-Driven Packing**: Uses a heuristic based on rectangle area to prioritize packing larger rectangles first.
-- **Dynamic Visualization**: Includes a real-time animation of the packing process, helping to understand how the algorithm works.
-- **Modular Code Structure**: Organized into modular components, making it easy to extend and maintain.
+```python
+from aco import BoxSpec, Packer, Params
 
-## Installation
-
-To set up this project on your local machine, follow these steps:
-
-1. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/your-username/2d-rectangle-packing-aco.git
-   cd 2d-rectangle-packing-aco
-   ```
-
-2. **Install Dependencies**:
-   The project relies on Python and several libraries. Install the required dependencies using pip:
-   ```bash
-   pip install -r requirements.txt
-   ```
-   Ensure that the `requirements.txt` file includes the following packages:
-   - `numpy`
-   - `matplotlib`
-
-3. **Run the Application**:
-   After installing the dependencies, you can run the main script to see the algorithm in action:
-   ```bash
-   python main.py
-   ```
-
-## Usage
-
-Once the project is set up, you can run the algorithm and observe the packing process. The main components of the project include:
-
-- **`main.py`**: The entry point of the application, containing the ACO algorithm and core logic.
-- **`visualization.py`**: Handles the visualization of the packing process.
-- **`constants.py`**: Contains configurable parameters for the algorithm, such as the number of rectangles, bin size, and number of iterations.
-
-## Customization
-
-The project is designed to be easily customizable. You can modify the following parameters in `constants.py`:
-
-- **`NUM_RECTANGLES`**: The number of rectangles to generate and pack.
-- **`MAX_RECT_WIDTH` and `MAX_RECT_HEIGHT`**: The maximum width and height for generated rectangles.
-- **`BIN_WIDTH` and `BIN_HEIGHT`**: The dimensions of the bin/container.
-- **`NUM_ITERATIONS`**: The number of iterations the ACO algorithm will run.
-
-You can also adjust the visualization settings in `visualization.py`, such as the animation speed and the color of the rectangles.
-
-## Visualization
-
-The visualization is a key feature of this project, providing insight into how the ACO algorithm packs the rectangles. The application opens a window with two panes:
-
-- **Left Pane**: Displays the "Packed Rectangles" bin, where the rectangles are packed in real-time as the algorithm progresses.
-- **Right Pane**: Shows the "Remaining Rectangles" that have not yet been packed. Rectangles that have been packed will change color to indicate their status.
+packer = Packer(48, 96, [BoxSpec(23.25, 30, 4, True, "Side"), BoxSpec(22.5, 11.25, 6, True, "Shelf")],
+                kerf=0.125, params=Params(iterations=100))
+best, greedy = packer.solve()
+```

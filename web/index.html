@@ -1,0 +1,944 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Antcut Sheet Packer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: workbench. Config rail on the left, sheets and the colony's reasoning on the right. */
+:root {
+  --bg: #eef1ed;
+  --panel: #fbfcfa;
+  --ink: #18221d;
+  --muted: #5a6a62;
+  --line: #d3dbd5;
+  --accent: #1d6b52;        /* cutting-mat green */
+  --accent-ink: #ffffff;
+  --mark: #e0a40c;          /* tape-measure yellow */
+  --sheet: #e4e9e2;
+  --grid: #cfd8d1;
+  --warn: #a6461b;
+  --warn-bg: #fbeee6;
+  --c0: #6b9bd1; --c1: #e39a5b; --c2: #7cb98a; --c3: #c97fb4; --c4: #d8c157;
+  --c5: #64b8b4; --c6: #b98a6a; --c7: #9a8fd6; --c8: #d9787a; --c9: #8fb45a;
+  --part-stroke: rgba(20, 30, 25, .55);
+  --f-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --r: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121815; --panel: #19211d; --ink: #e3ebe6; --muted: #93a39b; --line: #2c3833;
+    --accent: #47b48e; --accent-ink: #0c1411; --mark: #f0bd3a; --sheet: #202a25; --grid: #2b3731;
+    --warn: #f29a6e; --warn-bg: #2e1f17;
+    --c0: #5a86b8; --c1: #c7814a; --c2: #5f9c6e; --c3: #a96697; --c4: #b9a344;
+    --c5: #4d9d99; --c6: #9c7255; --c7: #7f74b9; --c8: #bb6062; --c9: #76973f;
+    --part-stroke: rgba(0, 0, 0, .6);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121815; --panel: #19211d; --ink: #e3ebe6; --muted: #93a39b; --line: #2c3833;
+  --accent: #47b48e; --accent-ink: #0c1411; --mark: #f0bd3a; --sheet: #202a25; --grid: #2b3731;
+  --warn: #f29a6e; --warn-bg: #2e1f17;
+  --c0: #5a86b8; --c1: #c7814a; --c2: #5f9c6e; --c3: #a96697; --c4: #b9a344;
+  --c5: #4d9d99; --c6: #9c7255; --c7: #7f74b9; --c8: #bb6062; --c9: #76973f;
+  --part-stroke: rgba(0, 0, 0, .6);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink); font: 14px/1.5 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 48px;
+}
+h1, h2, h3 { font-family: var(--f-display); font-weight: 600; letter-spacing: .01em; margin: 0; text-wrap: balance; }
+h1 { font-size: 34px; line-height: 1; font-weight: 700; }
+h2 { font-size: 24px; line-height: 1.1; }
+h3 { font-size: 18px; }
+p { margin: 0; }
+.mono, input, .num { font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--f-mono); }
+.muted { color: var(--muted); }
+.label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+
+.wrap { max-width: 1320px; margin: 0 auto; display: grid; gap: 20px; }
+header.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 24px; padding-bottom: 14px; border-bottom: 2px solid var(--ink); }
+header.top .tag { max-width: 60ch; color: var(--muted); }
+.ruler { height: 8px; margin-top: -14px; background-image: repeating-linear-gradient(90deg, var(--ink) 0 1px, transparent 1px 12px), repeating-linear-gradient(90deg, var(--ink) 0 1px, transparent 1px 60px); background-size: auto 4px, auto 8px; background-repeat: repeat-x; opacity: .5; }
+
+.layout { display: grid; grid-template-columns: minmax(320px, 400px) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 880px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; gap: 14px; min-width: 0; }
+aside.panel { position: sticky; top: max(12px, env(safe-area-inset-top, 0px)); }
+@media (max-width: 880px) { aside.panel { position: static; } }
+
+.field { display: grid; gap: 4px; }
+.row { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+.row > .field { flex: 1 1 0; min-width: 0; }
+input[type=text], input[type=number], select {
+  font: 14px var(--f-mono); color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 4px; padding: 6px 8px; width: 100%; min-width: 0;
+}
+input:focus-visible, select:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--mark); outline-offset: 1px; }
+input.bad { border-color: var(--warn); background: var(--warn-bg); }
+.times { padding-bottom: 7px; color: var(--muted); }
+
+.seg { display: flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.seg button { flex: 1; border: 0; background: transparent; padding: 6px 0; font: 500 13px var(--f-mono); color: var(--muted); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed=true] { background: var(--ink); color: var(--panel); }
+
+button { font: inherit; }
+.btn { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 4px; padding: 6px 12px; cursor: pointer; font-weight: 500; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-family: var(--f-display); font-size: 18px; font-weight: 600; letter-spacing: .03em; padding: 8px 14px; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.small { padding: 3px 8px; font-size: 12px; }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+.btn.ghost:hover { color: var(--warn); }
+
+.boxes { display: grid; gap: 6px; }
+.box-head, .box-row { display: grid; grid-template-columns: 12px minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr) 44px 22px 22px; gap: 5px; align-items: center; }
+.box-head { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; }
+.box-row input { padding: 5px 6px; font-size: 13px; }
+.box-row input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); margin: 0 auto; }
+.sw { width: 12px; height: 12px; border-radius: 2px; border: 1px solid var(--part-stroke); }
+
+details { border-top: 1px solid var(--line); padding-top: 10px; }
+summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+.params { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.hint { font-size: 12px; color: var(--muted); }
+.err { font-size: 12px; color: var(--warn); }
+
+.progress { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.progress > i { display: block; height: 100%; width: 0; background: var(--mark); transition: width .15s; }
+
+main { display: grid; gap: 20px; min-width: 0; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.stat { background: var(--panel); padding: 12px 14px; display: grid; gap: 2px; }
+.stat b { font: 600 28px/1.1 var(--f-display); }
+.stat .d { font-size: 12px; color: var(--muted); }
+.good { color: var(--accent); }
+
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; background: var(--warn-bg); color: var(--warn); border: 1px solid currentColor; }
+
+.sheets { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 16px; }
+.sheet-card { display: grid; gap: 6px; min-width: 0; }
+.sheet-card .cap { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+svg { display: block; max-width: 100%; }
+svg text { font-family: var(--f-mono); }
+
+.section-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 8px 16px; }
+.section-head p { max-width: 70ch; }
+
+.insight-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+@media (max-width: 1100px) { .insight-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); }
+.legend i { display: inline-block; width: 14px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 5px; }
+
+.replay { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 16px; align-items: start; }
+@media (max-width: 640px) { .replay { grid-template-columns: minmax(0, 1fr); } }
+.controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.controls input[type=range] { flex: 1 1 160px; accent-color: var(--accent); }
+.narr { font-size: 13px; padding: 10px 12px; background: var(--bg); border-left: 3px solid var(--mark); border-radius: 0 4px 4px 0; }
+.cand-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.cand-table th { text-align: left; font-weight: 600; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .07em; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.cand-table td { padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.cand-table td.n { font-family: var(--f-mono); text-align: right; white-space: nowrap; }
+.cand-table tr.chosen td { background: color-mix(in oklab, var(--mark) 22%, transparent); font-weight: 600; }
+.pbar { position: relative; height: 8px; background: var(--line); border-radius: 2px; min-width: 50px; }
+.pbar > i { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 2px; }
+.scroll-x { overflow-x: auto; }
+
+.heat { border-collapse: separate; border-spacing: 2px; font-size: 11px; }
+.heat th { font-weight: 500; color: var(--muted); padding: 2px 4px; white-space: nowrap; }
+.heat th.rowh { text-align: right; }
+.heat th.colh { writing-mode: vertical-rl; transform: rotate(180deg); text-align: left; height: 70px; }
+.heat td { width: 30px; height: 26px; border-radius: 3px; text-align: center; font-family: var(--f-mono); font-size: 10px; }
+
+.method { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 16px 24px; }
+.method div { display: grid; gap: 4px; align-content: start; }
+.method p, .method li { font-size: 13px; color: var(--muted); max-width: 65ch; }
+.method ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.method b { color: var(--ink); font-weight: 600; }
+.empty { padding: 32px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: var(--r); }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div style="display:grid;gap:4px">
+      <span class="label">Ant colony optimization · 2D sheet nesting</span>
+      <h1>Antcut</h1>
+    </div>
+    <p class="tag">Lay out rectangular parts on stock sheets. A colony of simulated ants tries orderings, shares what worked through pheromone, and keeps the layout that uses the fewest, fullest sheets.</p>
+  </header>
+  <div class="ruler" aria-hidden="true"></div>
+
+  <div class="layout">
+    <aside class="panel" aria-label="Job setup">
+      <div class="field">
+        <span class="label">Units</span>
+        <div class="seg" id="units" role="group" aria-label="Units"></div>
+      </div>
+
+      <div class="field">
+        <span class="label">Example jobs</span>
+        <select id="preset" aria-label="Load an example job">
+          <option value="">Load an example…</option>
+          <option value="cabinet">Base cabinet parts · 4×8 ft plywood</option>
+          <option value="pallet">Carton footprints · EUR pallet</option>
+          <option value="acrylic">Sign blanks · 1220×2440 mm acrylic</option>
+          <option value="original">Original repo demo · 65 random squares</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <span class="label">Sheet</span>
+        <div class="row">
+          <div class="field"><label class="hint" for="sheetW">Width</label><input type="text" id="sheetW" inputmode="decimal"></div>
+          <span class="times">×</span>
+          <div class="field"><label class="hint" for="sheetH">Height</label><input type="text" id="sheetH" inputmode="decimal"></div>
+          <div class="field" style="flex:0 0 84px"><label class="hint" for="kerf">Kerf / gap</label><input type="text" id="kerf" inputmode="decimal"></div>
+        </div>
+        <span class="hint" id="unitHint"></span>
+      </div>
+
+      <div class="field">
+        <span class="label">Boxes</span>
+        <div class="boxes">
+          <div class="box-head"><span></span><span>Name</span><span>W</span><span>H</span><span>Qty</span><span title="Allow rotation">Rot</span><span></span></div>
+          <div id="boxList" class="boxes"></div>
+        </div>
+        <div class="row" style="justify-content:space-between">
+          <button class="btn small" id="addBox" type="button">+ Add box</button>
+          <span class="hint" id="boxTotal"></span>
+        </div>
+        <div class="err" id="formErr" hidden></div>
+      </div>
+
+      <details>
+        <summary>Colony settings</summary>
+        <div class="params">
+          <div class="field"><label class="hint" for="pAnts">Ants</label><input type="number" id="pAnts" min="1" max="100" step="1"></div>
+          <div class="field"><label class="hint" for="pIters">Iterations</label><input type="number" id="pIters" min="1" max="500" step="1"></div>
+          <div class="field"><label class="hint" for="pSeed">Seed</label><input type="number" id="pSeed" min="0" step="1"></div>
+          <div class="field"><label class="hint" for="pAlpha">α pheromone</label><input type="number" id="pAlpha" min="0" max="5" step="0.1"></div>
+          <div class="field"><label class="hint" for="pBeta">β heuristic</label><input type="number" id="pBeta" min="0" max="8" step="0.1"></div>
+          <div class="field"><label class="hint" for="pEvap">Evaporation</label><input type="number" id="pEvap" min="0.01" max="0.9" step="0.01"></div>
+        </div>
+        <p class="hint" style="margin-top:8px">α = 0 turns learning off, so ants sample from the heuristic alone. Higher β makes them greedier. Evaporation is the share of pheromone lost each iteration.</p>
+      </details>
+
+      <div class="grid" style="display:grid;gap:8px">
+        <button class="btn primary" id="run" type="button">Pack sheets</button>
+        <div class="progress" aria-hidden="true"><i id="prog"></i></div>
+        <span class="hint" id="status">Ready.</span>
+      </div>
+    </aside>
+
+    <main>
+      <section class="stats" id="stats" aria-label="Result summary"></section>
+      <div id="warnings"></div>
+
+      <section class="panel" aria-labelledby="hSheets">
+        <div class="section-head">
+          <h2 id="hSheets">Cutting layout</h2>
+          <div class="legend" id="typeLegend"></div>
+        </div>
+        <div class="sheets" id="sheets"><div class="empty">Add boxes and press Pack sheets.</div></div>
+      </section>
+
+      <section class="panel" aria-labelledby="hInsight">
+        <div class="section-head">
+          <h2 id="hInsight">How the colony got there</h2>
+          <p class="muted" id="insightLead">Each iteration, every ant builds a full layout. The best one leaves pheromone on the choices it made, and the next ants lean toward those choices.</p>
+        </div>
+
+        <div class="insight-grid">
+          <div style="display:grid;gap:8px;min-width:0">
+            <h3>Convergence</h3>
+            <div class="legend">
+              <span><i style="border-color:var(--accent)"></i>Best so far</span>
+              <span><i style="border-color:var(--c0)"></i>Best ant this iteration</span>
+              <span><i style="border-color:var(--muted);border-top-style:dotted"></i>Average ant</span>
+              <span><i style="border-color:var(--mark);border-top-style:dashed"></i>Greedy baseline</span>
+            </div>
+            <div id="convChart"></div>
+            <p class="hint">Score is Σ(sheet fill²) ÷ sheets, plus a small bonus for a big leftover piece on the last sheet. Higher is better. Vertical ticks mark pheromone resets after the colony stalled.</p>
+            <h3 style="margin-top:6px">Decisiveness</h3>
+            <div id="entChart"></div>
+            <p class="hint">Average entropy of each ant's choices: 1 means every candidate was equally likely, 0 means the ant always knew what to pick. It falls as pheromone builds up.</p>
+          </div>
+
+          <div style="display:grid;gap:8px;min-width:0">
+            <div class="section-head"><h3>Pheromone map</h3><span class="hint mono" id="heatIt"></span></div>
+            <div class="controls"><label class="hint" for="heatSlider">Iteration</label><input type="range" id="heatSlider" min="0" max="0" value="0"></div>
+            <div class="scroll-x" id="heat"></div>
+            <p class="hint">Row = the box just placed (or a fresh sheet). Column = the box placed next. Darker cells are trails the colony reinforced; ants following a dark cell are more likely to repeat that pairing.</p>
+          </div>
+        </div>
+
+        <div style="display:grid;gap:10px;border-top:1px solid var(--line);padding-top:16px">
+          <div class="section-head">
+            <h3>Replay the winning ant</h3>
+            <span class="hint" id="replayMeta"></span>
+          </div>
+          <div class="controls">
+            <button class="btn small" id="stepBack" type="button" aria-label="Previous step">◀</button>
+            <button class="btn small" id="play" type="button">Play</button>
+            <button class="btn small" id="stepFwd" type="button" aria-label="Next step">▶</button>
+            <input type="range" id="stepSlider" min="0" max="0" value="0" aria-label="Step">
+            <span class="mono hint" id="stepLabel"></span>
+          </div>
+          <div class="replay">
+            <div id="replaySheet"></div>
+            <div style="display:grid;gap:8px;min-width:0">
+              <div class="narr" id="narr"></div>
+              <div class="scroll-x"><table class="cand-table" id="candTable"></table></div>
+              <p class="hint">τ = pheromone on “previous box → this box”, as a share of the cap. η = heuristic: bigger boxes and boxes that fill their gap snugly score higher. P ∝ τ<sup>α</sup>·η<sup>β</sup>. Dashed outlines show where each candidate would land.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="hMethod">
+        <h2 id="hMethod">Method notes</h2>
+        <div class="method">
+          <div>
+            <h3>What an ant does</h3>
+            <ul>
+              <li>Looks at every box type still to place and finds where it would fit best on the open sheet (MaxRects, best short-side fit, both orientations if rotation is allowed).</li>
+              <li>Scores each with pheromone τ and heuristic η, then draws one at random in proportion to τ<sup>α</sup>η<sup>β</sup>.</li>
+              <li>When nothing else fits, it closes the sheet and starts a new one.</li>
+            </ul>
+          </div>
+          <div>
+            <h3>How the colony learns</h3>
+            <ul>
+              <li>Pheromone sits on pairs: “after box A, place box B”. Identical boxes share one type, so what one learns applies to all copies.</li>
+              <li>Max-Min Ant System: all trails evaporate, only the iteration's best ant deposits (the all-time best every 5th round), and trails stay between a floor and a cap so no option dies out.</li>
+              <li>If 25 rounds pass with no improvement, trails reset to the cap and the search restarts.</li>
+            </ul>
+          </div>
+          <div>
+            <h3>Fixed from the original</h3>
+            <ul>
+              <li><b>Pheromone landed on the wrong boxes.</b> The update added to indices 0…k−1 instead of the boxes that were packed.</li>
+              <li><b>Ants shared one set of box objects across threads,</b> so positions and rotations overwrote each other. The “best” layout could have overlaps and negative scores.</li>
+              <li><b>The heuristic was area⁸</b> (area⁴, then squared), which drowned out pheromone completely.</li>
+              <li><b>The animation re-packed the boxes greedily</b> and never showed the ACO result.</li>
+              <li><b>Integer grid scan only</b>, so decimal sizes and kerf were impossible.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script src="solver.js"></script>
+<script>
+(() => {
+  const S = ACOSolverModule();
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- units ----------
+  const UNITS = { mm: 1, cm: 10, m: 1000, in: 25.4, ft: 304.8 };
+  const UNIT_ORDER = ['mm', 'cm', 'm', 'in', 'ft'];
+  const SUFFIX = [['mm', 'mm'], ['cm', 'cm'], ['m', 'm'], ['in', 'in'], ['"', 'in'], ['ft', 'ft'], ["'", 'ft']];
+
+  function parseLen(str, unit) {
+    let s = String(str).trim().toLowerCase();
+    if (!s) return NaN;
+    let u = unit;
+    for (const [suf, uu] of SUFFIX) {
+      if (s.endsWith(suf)) { u = uu; s = s.slice(0, -suf.length).trim(); break; }
+    }
+    // "3 1/2", "3-1/2", "1/2", "3.5"
+    let m = s.match(/^(\d+(?:\.\d+)?)[\s-]+(\d+)\/(\d+)$/);
+    let v;
+    if (m) v = +m[1] + +m[2] / +m[3];
+    else if ((m = s.match(/^(\d+)\/(\d+)$/))) v = +m[1] / +m[2];
+    else if (/^\d*\.?\d+$/.test(s)) v = +s;
+    else return NaN;
+    if (!isFinite(v)) return NaN;
+    return v * UNITS[u];
+  }
+
+  function fmtLen(mm, unit, opts = {}) {
+    const v = mm / UNITS[unit];
+    if (unit === 'in' || unit === 'ft') {
+      const whole = Math.floor(v + 1e-9);
+      const frac = v - whole;
+      const sixteenths = Math.round(frac * 16);
+      if (Math.abs(frac * 16 - sixteenths) < 1e-4) {
+        if (sixteenths === 0) return String(whole);
+        if (sixteenths === 16) return String(whole + 1);
+        let n = sixteenths, d = 16;
+        while (n % 2 === 0) { n /= 2; d /= 2; }
+        return whole ? `${whole} ${n}/${d}` : `${n}/${d}`;
+      }
+    }
+    const dp = opts.dp ?? (unit === 'mm' ? 1 : unit === 'm' ? 4 : 3);
+    return String(+v.toFixed(dp));
+  }
+
+  // ---------- state ----------
+  let uid = 0;
+  const state = {
+    unit: 'in',
+    sheetW: 48 * 25.4, sheetH: 96 * 25.4, kerf: 0.125 * 25.4,
+    items: [],
+    params: { ants: 20, iterations: 80, seed: 7, alpha: 1, beta: 2, evaporation: 0.1 },
+    result: null,
+    live: null,
+    running: false,
+  };
+
+  const PRESETS = {
+    cabinet: () => ({
+      unit: 'in', sheetW: 48, sheetH: 96, kerf: 0.125,
+      items: [
+        ['Side', 23.25, 30, 4], ['Back', 30, 34.5, 2], ['Shelf', 22.5, 11.25, 6],
+        ['Drawer front', 15, 6, 8], ['Toe kick', 4, 36, 3], ['Stretcher', 3.5, 28.5, 6],
+      ],
+    }),
+    pallet: () => ({
+      unit: 'mm', sheetW: 1200, sheetH: 800, kerf: 0,
+      items: [['Large', 600, 400, 1], ['Medium', 400, 300, 3], ['Long', 500, 200, 2], ['Small', 300, 200, 5], ['Tiny', 200, 150, 6]],
+    }),
+    acrylic: () => ({
+      unit: 'mm', sheetW: 1220, sheetH: 2440, kerf: 3,
+      items: [['Door sign', 300, 100, 24], ['Menu board', 600, 450, 4], ['Plaque', 250, 200, 12], ['Wayfinding', 900, 150, 6], ['Banner', 1200, 300, 2]],
+    }),
+    original: () => {
+      const r = S.mulberry32(20240827);
+      const counts = {};
+      for (let i = 0; i < 65; i++) {
+        const a = 1 + Math.floor(r() * 4), b = 1 + Math.floor(r() * 4);
+        const k = `${Math.max(a, b)}x${Math.min(a, b)}`; // rotation is allowed, so 3×4 and 4×3 are one type
+        counts[k] = (counts[k] || 0) + 1;
+      }
+      const items = Object.entries(counts).map(([k, q]) => { const [w, h] = k.split('x').map(Number); return [`${w}×${h}`, w, h, q]; })
+        .sort((a, b) => b[1] * b[2] - a[1] * a[2]);
+      return { unit: 'cm', sheetW: 21, sheetH: 21, kerf: 0, items };
+    },
+  };
+
+  function loadPreset(name) {
+    const p = PRESETS[name]();
+    const f = UNITS[p.unit];
+    state.unit = p.unit;
+    state.sheetW = p.sheetW * f; state.sheetH = p.sheetH * f; state.kerf = p.kerf * f;
+    state.items = p.items.map(([label, w, h, qty]) => ({ id: ++uid, label, w: w * f, h: h * f, qty, rotate: true }));
+    renderForm();
+  }
+
+  // ---------- form ----------
+  function colorVar(t) { return `var(--c${t % 10})`; }
+
+  function renderUnits() {
+    const el = $('units');
+    el.innerHTML = '';
+    for (const u of UNIT_ORDER) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = u; b.setAttribute('aria-pressed', String(u === state.unit));
+      b.onclick = () => { state.unit = u; renderForm(); renderResult(); };
+      el.appendChild(b);
+    }
+    $('unitHint').textContent = state.unit === 'in' || state.unit === 'ft'
+      ? 'Fractions work: 23 1/4, 3-1/2. Add a unit to override, e.g. 600mm.'
+      : 'Decimals work. Add a unit to override, e.g. 4ft or 23.5in.';
+  }
+
+  function bindLen(input, get, set) {
+    input.value = fmtLen(get(), state.unit);
+    input.onchange = () => {
+      const v = parseLen(input.value, state.unit);
+      const ok = isFinite(v) && v >= 0;
+      input.classList.toggle('bad', !ok);
+      if (ok) { set(v); input.value = fmtLen(v, state.unit); }
+      validate();
+    };
+  }
+
+  function renderForm() {
+    renderUnits();
+    bindLen($('sheetW'), () => state.sheetW, (v) => (state.sheetW = v));
+    bindLen($('sheetH'), () => state.sheetH, (v) => (state.sheetH = v));
+    bindLen($('kerf'), () => state.kerf, (v) => (state.kerf = v));
+    const list = $('boxList');
+    list.innerHTML = '';
+    state.items.forEach((it, i) => {
+      const row = document.createElement('div');
+      row.className = 'box-row';
+      row.innerHTML = `
+        <span class="sw" style="background:${colorVar(i)}"></span>
+        <input type="text" id="bl${it.id}" aria-label="Box name" maxlength="24">
+        <input type="text" id="bw${it.id}" aria-label="Box width" inputmode="decimal">
+        <input type="text" id="bh${it.id}" aria-label="Box height" inputmode="decimal">
+        <input type="number" id="bq${it.id}" aria-label="Quantity" min="0" max="999" step="1">
+        <input type="checkbox" id="br${it.id}" aria-label="Allow rotation">
+        <button class="btn ghost small" type="button" aria-label="Remove box">✕</button>`;
+      list.appendChild(row);
+      const [, lab, w, h, q, rot, del] = row.children;
+      lab.value = it.label; lab.oninput = () => { it.label = lab.value; };
+      bindLen(w, () => it.w, (v) => (it.w = v));
+      bindLen(h, () => it.h, (v) => (it.h = v));
+      q.value = it.qty;
+      q.onchange = () => { const v = Math.floor(+q.value); const ok = v >= 0 && v <= 999; q.classList.toggle('bad', !ok); if (ok) it.qty = v; validate(); };
+      rot.checked = it.rotate; rot.onchange = () => { it.rotate = rot.checked; };
+      del.onclick = () => { state.items.splice(i, 1); renderForm(); };
+    });
+    const P = state.params;
+    $('pAnts').value = P.ants; $('pIters').value = P.iterations; $('pSeed').value = P.seed;
+    $('pAlpha').value = P.alpha; $('pBeta').value = P.beta; $('pEvap').value = P.evaporation;
+    validate();
+  }
+
+  function readParams() {
+    const clamp = (v, lo, hi, d) => (isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
+    const P = state.params;
+    P.ants = Math.round(clamp(+$('pAnts').value, 1, 100, 20));
+    P.iterations = Math.round(clamp(+$('pIters').value, 1, 500, 80));
+    P.seed = Math.round(clamp(+$('pSeed').value, 0, 4294967295, 7));
+    P.alpha = clamp(+$('pAlpha').value, 0, 5, 1);
+    P.beta = clamp(+$('pBeta').value, 0, 8, 2);
+    P.evaporation = clamp(+$('pEvap').value, 0.01, 0.9, 0.1);
+  }
+
+  function validate() {
+    const total = state.items.reduce((s, it) => s + (it.qty || 0), 0);
+    $('boxTotal').textContent = `${total} box${total === 1 ? '' : 'es'} · ${state.items.length} size${state.items.length === 1 ? '' : 's'}`;
+    let msg = '';
+    if (document.querySelector('aside input.bad')) msg = 'Fix the highlighted fields. Use numbers like 12, 12.5 or 12 1/2.';
+    else if (!(state.sheetW > 0 && state.sheetH > 0)) msg = 'The sheet needs a width and height above zero.';
+    else if (!state.items.some((it) => it.qty > 0 && it.w > 0 && it.h > 0)) msg = 'Add at least one box with a size and a quantity.';
+    else if (total > 1500) msg = 'Over 1,500 boxes. This will work but can take a minute; try fewer ants or iterations.';
+    const e = $('formErr');
+    e.hidden = !msg; e.textContent = msg;
+    const blocking = msg && !msg.startsWith('Over');
+    $('run').disabled = !!blocking || state.running;
+    return !blocking;
+  }
+
+  $('addBox').onclick = () => {
+    const f = UNITS[state.unit];
+    const base = state.unit === 'in' ? 12 * f : state.unit === 'ft' ? f : state.unit === 'mm' ? 300 : state.unit === 'cm' ? 30 * f : 0.3 * f;
+    state.items.push({ id: ++uid, label: `Box ${state.items.length + 1}`, w: base, h: base * 0.75, qty: 4, rotate: true });
+    renderForm();
+    const last = state.items[state.items.length - 1];
+    $(`bl${last.id}`).focus();
+  };
+  $('preset').onchange = (e) => { if (e.target.value) { loadPreset(e.target.value); e.target.value = ''; run(); } };
+
+  // ---------- worker ----------
+  let worker = null;
+  function makeWorker() {
+    const src = `${ACOSolverModule.toString()}
+const M = ACOSolverModule();
+onmessage = (e) => {
+  let n = 0;
+  const res = M.solve(e.data, (p) => { postMessage({ type: 'progress', p }); });
+  postMessage({ type: 'done', res });
+};`;
+    const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+    const w = new Worker(url);
+    URL.revokeObjectURL(url);
+    return w;
+  }
+
+  function run() {
+    readParams();
+    if (!validate()) return;
+    if (worker) worker.terminate();
+    worker = makeWorker();
+    state.running = true;
+    state.live = { history: [], best: null };
+    const snapshotUnit = state.unit;
+    const input = {
+      sheetW: state.sheetW, sheetH: state.sheetH, kerf: state.kerf,
+      items: state.items.map((it) => ({ w: it.w, h: it.h, qty: it.qty, rotate: it.rotate, label: it.label || 'Box' })),
+      params: { ...state.params },
+    };
+    const labels = state.items.map((it) => it.label || 'Box');
+    $('run').textContent = 'Packing…';
+    $('run').disabled = true;
+    $('status').textContent = 'Ants are working…';
+    const t0 = performance.now();
+    let raf = 0;
+    worker.onmessage = (e) => {
+      const m = e.data;
+      if (m.type === 'progress') {
+        state.live.history.push(m.p.h);
+        state.live.best = m.p.best;
+        $('prog').style.width = `${(100 * m.p.h.it) / input.params.iterations}%`;
+        if (!raf) raf = requestAnimationFrame(() => { raf = 0; renderLive(input, labels); });
+      } else if (m.type === 'done') {
+        cancelAnimationFrame(raf);
+        state.running = false;
+        state.result = { ...m.res, input, labels, ms: performance.now() - t0 };
+        $('run').textContent = 'Pack sheets';
+        $('prog').style.width = '100%';
+        $('status').textContent = `Done in ${(state.result.ms / 1000).toFixed(1)} s · ${input.params.ants} ants × ${input.params.iterations} iterations = ${(input.params.ants * input.params.iterations).toLocaleString()} layouts tried.`;
+        validate();
+        renderResult();
+        worker.terminate(); worker = null;
+      }
+    };
+    worker.onerror = (err) => {
+      state.running = false;
+      $('run').textContent = 'Pack sheets';
+      $('status').textContent = `The solver stopped: ${err.message}. Try fewer boxes or check the sizes.`;
+      validate();
+    };
+    worker.postMessage(input);
+  }
+  $('run').onclick = run;
+
+  // ---------- rendering helpers ----------
+  const NS = 'http://www.w3.org/2000/svg';
+  function svgEl(tag, attrs = {}, parent) {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+
+  // draw a sheet. parts: [{t,x,y,w,h}] in mm. opts: {highlight, ghosts, dim}
+  function drawSheet(W, H, parts, labels, opts = {}) {
+    const pad = Math.max(W, H) * 0.012;
+    const svg = svgEl('svg', { viewBox: `${-pad} ${-pad} ${W + 2 * pad} ${H + 2 * pad}`, role: 'img' });
+    const maxH = opts.maxH || 420;
+    svg.style.width = '100%';
+    svg.style.maxHeight = maxH + 'px';
+    svg.style.aspectRatio = `${W + 2 * pad} / ${H + 2 * pad}`;
+    svg.setAttribute('aria-label', `Sheet with ${parts.length} parts`);
+    svgEl('rect', { x: 0, y: 0, width: W, height: H, fill: 'var(--sheet)', stroke: 'var(--muted)', 'stroke-width': Math.max(W, H) * 0.002 }, svg);
+    // grid every "nice" unit step
+    const step = niceStep(Math.max(W, H) / 12);
+    const g = svgEl('g', { stroke: 'var(--grid)', 'stroke-width': Math.max(W, H) * 0.0012 }, svg);
+    for (let x = step; x < W - 1e-6; x += step) svgEl('line', { x1: x, y1: 0, x2: x, y2: H }, g);
+    for (let y = step; y < H - 1e-6; y += step) svgEl('line', { x1: 0, y1: y, x2: W, y2: y }, g);
+
+    const sw = Math.max(W, H) * 0.0018;
+    parts.forEach((p, i) => {
+      const r = svgEl('rect', {
+        x: p.x, y: p.y, width: p.w, height: p.h,
+        fill: colorVar(p.t), stroke: 'var(--part-stroke)', 'stroke-width': sw,
+        opacity: opts.dimBefore != null && i < opts.dimBefore ? 0.55 : 1,
+      }, svg);
+      const title = svgEl('title', {}, r);
+      title.textContent = `${labels[p.item ?? p.t] || 'Box'} · ${fmtLen(p.w, state.unit)} × ${fmtLen(p.h, state.unit)} ${state.unit}${p.rot ? ' (rotated)' : ''} · at ${fmtLen(p.x, state.unit)}, ${fmtLen(p.y, state.unit)}`;
+      const fs = Math.min(p.w, p.h) * 0.26;
+      const cap = Math.max(W, H) * 0.03;
+      const size = Math.min(fs, cap);
+      const txt = `${fmtLen(p.w, state.unit)}×${fmtLen(p.h, state.unit)}`;
+      if (!opts.noText && size > Math.max(W, H) * 0.012 && txt.length * size * 0.62 < p.w * 0.92) {
+        const t = svgEl('text', { x: p.x + p.w / 2, y: p.y + p.h / 2, 'font-size': size, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: 'var(--ink)', 'pointer-events': 'none' }, svg);
+        t.textContent = txt;
+      }
+    });
+    if (opts.highlight) {
+      const p = opts.highlight;
+      svgEl('rect', { x: p.x, y: p.y, width: p.w, height: p.h, fill: 'none', stroke: 'var(--mark)', 'stroke-width': sw * 3.5 }, svg);
+    }
+    if (opts.ghosts) {
+      for (const gh of opts.ghosts) {
+        svgEl('rect', { x: gh.x, y: gh.y, width: gh.w, height: gh.h, fill: 'none', stroke: colorVar(gh.t), 'stroke-width': sw * 2.2, 'stroke-dasharray': `${sw * 6} ${sw * 4}` }, svg);
+      }
+    }
+    return svg;
+  }
+  function niceStep(raw) {
+    const p = Math.pow(10, Math.floor(Math.log10(raw)));
+    const n = raw / p;
+    return (n < 1.5 ? 1 : n < 3.5 ? 2 : n < 7.5 ? 5 : 10) * p;
+  }
+
+  function lineChart(el, series, opts) {
+    el.innerHTML = '';
+    const W = Math.max(280, el.clientWidth || 560), H = opts.height || 200;
+    const m = { l: 46, r: 12, t: 10, b: 26 };
+    const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img', 'aria-label': opts.label }, el);
+    const xs = opts.xMax || 1;
+    let lo = opts.yMin, hi = opts.yMax;
+    if (lo == null || hi == null) {
+      const vals = series.filter((s) => !s.noScale).flatMap((s) => (s.hline != null ? [s.hline] : s.data.map((d) => d[1]))).filter(isFinite);
+      lo = Math.min(...vals); hi = Math.max(...vals);
+      const padv = (hi - lo) * 0.08 || 0.01;
+      lo -= padv; hi += padv;
+    }
+    const X = (x) => m.l + ((W - m.l - m.r) * x) / xs;
+    const Y = (y) => m.t + (H - m.t - m.b) * (1 - (y - lo) / (hi - lo));
+    // grid + ticks
+    const ticks = 4;
+    const dp = opts.dp ?? Math.min(6, Math.max(1, Math.ceil(-Math.log10((hi - lo) / ticks)) + 1));
+    for (let i = 0; i <= ticks; i++) {
+      const v = lo + ((hi - lo) * i) / ticks;
+      svgEl('line', { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: 'var(--line)', 'stroke-width': 1 }, svg);
+      const t = svgEl('text', { x: m.l - 6, y: Y(v), 'text-anchor': 'end', 'dominant-baseline': 'central', 'font-size': 10, fill: 'var(--muted)' }, svg);
+      t.textContent = v.toFixed(dp);
+    }
+    const xt = niceStep(xs / 5);
+    for (let x = 0; x <= xs + 1e-9; x += xt) {
+      const t = svgEl('text', { x: X(x), y: H - 8, 'text-anchor': 'middle', 'font-size': 10, fill: 'var(--muted)' }, svg);
+      t.textContent = x;
+    }
+    for (const r of opts.marks || []) {
+      svgEl('line', { x1: X(r), x2: X(r), y1: m.t, y2: H - m.b, stroke: 'var(--muted)', 'stroke-width': 1, 'stroke-dasharray': '2 3' }, svg);
+    }
+    const clipId = 'clip' + Math.random().toString(36).slice(2);
+    const cp = svgEl('clipPath', { id: clipId }, svgEl('defs', {}, svg));
+    svgEl('rect', { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b }, cp);
+    const plot = svgEl('g', { 'clip-path': `url(#${clipId})` }, svg);
+    for (const s of series) {
+      if (s.hline != null) {
+        svgEl('line', { x1: m.l, x2: W - m.r, y1: Y(s.hline), y2: Y(s.hline), stroke: s.color, 'stroke-width': 1.5, 'stroke-dasharray': '6 4' }, plot);
+        continue;
+      }
+      if (!s.data.length) continue;
+      const d = s.data.map((p, i) => `${i ? 'L' : 'M'}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join('');
+      if (s.area) {
+        svgEl('path', { d: `${d}L${X(s.data.at(-1)[0])},${Y(lo)}L${X(s.data[0][0])},${Y(lo)}Z`, fill: s.color, opacity: 0.12 }, plot);
+      }
+      svgEl('path', { d, fill: 'none', stroke: s.color, 'stroke-width': s.width || 1.5, 'stroke-dasharray': s.dash || '', 'stroke-linejoin': 'round' }, plot);
+      if (s.dot) {
+        const p = s.dot;
+        svgEl('circle', { cx: X(p[0]), cy: Y(p[1]), r: 4, fill: s.color, stroke: 'var(--panel)', 'stroke-width': 2 }, svg);
+      }
+    }
+  }
+
+  // ---------- result rendering ----------
+  function renderStats(res, live) {
+    const el = $('stats');
+    const best = res.best;
+    const sheetArea = res.ctx.sheetW * res.ctx.sheetH;
+    const placed = best.sheets.reduce((s, sh) => s + sh.parts.length, 0);
+    const want = res.input.items.reduce((s, it) => s + it.qty, 0);
+    const g = res.greedy;
+    const dSheets = g.sheets.length - best.sheets.length;
+    const lift = g.fitness > 0 ? ((best.fitness - g.fitness) / g.fitness) * 100 : 0;
+    const lastFill = best.fills.at(-1) || 0;
+    el.innerHTML = `
+      <div class="stat"><span class="label">Sheets</span><b class="num">${best.sheets.length}</b><span class="d">${fmtLen(res.ctx.sheetW, state.unit)} × ${fmtLen(res.ctx.sheetH, state.unit)} ${state.unit}</span></div>
+      <div class="stat"><span class="label">Material used</span><b class="num">${(best.utilization * 100).toFixed(1)}%</b><span class="d">across all sheets</span></div>
+      <div class="stat"><span class="label">Boxes placed</span><b class="num">${placed}<span class="muted" style="font-size:18px"> / ${want}</span></b><span class="d">${want - placed ? `${want - placed} too big for the sheet` : 'all of them'}</span></div>
+      <div class="stat"><span class="label">Last sheet</span><b class="num">${(lastFill * 100).toFixed(0)}%</b><span class="d">full · ${((1 - lastFill) * 100).toFixed(0)}% left as offcut</span></div>
+      <div class="stat"><span class="label">vs. greedy</span><b class="num ${lift > 0.05 ? 'good' : ''}">${live ? '…' : (lift >= 0 ? '+' : '') + lift.toFixed(1) + '%'}</b><span class="d">${live ? 'running' : dSheets > 0 ? `${dSheets} fewer sheet${dSheets > 1 ? 's' : ''}` : 'score, same sheet count'}</span></div>`;
+  }
+
+  function renderWarnings(res) {
+    const w = $('warnings');
+    w.innerHTML = '';
+    for (const u of res.ctx.unplaceable) {
+      const c = document.createElement('div');
+      c.className = 'chip';
+      c.textContent = `${u.qty} × ${u.label || 'Box'} (${fmtLen(u.w, state.unit)} × ${fmtLen(u.h, state.unit)} ${state.unit}) won't fit on this sheet${state.items[u.item]?.rotate ? '' : ' without rotation'}.`;
+      w.appendChild(c);
+    }
+    w.style.display = res.ctx.unplaceable.length ? 'flex' : 'none';
+    w.style.flexWrap = 'wrap'; w.style.gap = '8px';
+  }
+
+  function renderSheets(res, best) {
+    const el = $('sheets');
+    el.innerHTML = '';
+    const types = res.ctx.types;
+    best.sheets.forEach((sh, i) => {
+      const card = document.createElement('div');
+      card.className = 'sheet-card';
+      const parts = sh.parts.map((p) => ({ ...p, item: types[p.t].item, t: types[p.t].item }));
+      card.appendChild(drawSheet(res.ctx.sheetW, res.ctx.sheetH, parts, res.labels, { maxH: 460 }));
+      const cap = document.createElement('div');
+      cap.className = 'cap';
+      cap.innerHTML = `<span><b>Sheet ${i + 1}</b> · ${sh.parts.length} parts</span><span class="mono muted">${(best.fills[i] * 100).toFixed(1)}% full</span>`;
+      card.appendChild(cap);
+      el.appendChild(card);
+    });
+    if (!best.sheets.length) el.innerHTML = '<div class="empty">Nothing could be placed. Check that boxes are smaller than the sheet.</div>';
+  }
+
+  function renderLegend(res) {
+    const el = $('typeLegend');
+    el.innerHTML = res.ctx.types.map((t) => `<span><span class="sw" style="display:inline-block;vertical-align:-1px;margin-right:5px;background:${colorVar(t.item)}"></span>${esc(t.label || 'Box')} <span class="mono">${fmtLen(t.w, state.unit)}×${fmtLen(t.h, state.unit)}</span> ×${t.qty}</span>`).join('');
+  }
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+  function renderConv(history, greedyF, iters, restarts, bestIter) {
+    const best = history.map((h) => [h.it, h.best]);
+    const dot = bestIter ? best.find((b) => b[0] === bestIter) : null;
+    lineChart($('convChart'), [
+      { data: history.map((h) => [h.it, h.mean]), color: 'var(--muted)', dash: '2 3', width: 1.2, noScale: true },
+      { data: history.map((h) => [h.it, h.iterBest]), color: 'var(--c0)', width: 1.2 },
+      { hline: greedyF, color: 'var(--mark)' },
+      { data: best, color: 'var(--accent)', width: 2.5, area: true, dot },
+    ], { xMax: iters, height: 210, label: 'Score per iteration', marks: restarts });
+    lineChart($('entChart'), [
+      { data: history.map((h) => [h.it, h.entropy]), color: 'var(--c3)', width: 2 },
+    ], { xMax: iters, height: 110, yMin: 0, yMax: 1, dp: 1, label: 'Choice entropy per iteration' });
+  }
+
+  function renderLive(input, labels) {
+    const L = state.live;
+    if (!L.best) return;
+    const fake = { best: L.best, greedy: L.best, ctx: S.buildContext(input), input, labels };
+    renderStats(fake, true);
+    renderSheets(fake, L.best);
+    renderConv(L.history, NaN, input.params.iterations, [], 0);
+  }
+
+  // ---------- pheromone heatmap ----------
+  function renderHeat(res, it) {
+    const snap = res.snapshots[it];
+    const nT = res.ctx.nT;
+    const types = res.ctx.types;
+    $('heatIt').textContent = it === 0 ? 'before any ant ran' : `after iteration ${it}${res.restarts.includes(it) ? ' (reset)' : ''}`;
+    if (!snap || !nT) { $('heat').innerHTML = '<p class="hint">No pheromone to show.</p>'; return; }
+    let lo = Infinity, hi = -Infinity;
+    for (const v of snap) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+    const tMin = res.tauMin, tMax = res.tauMax;
+    const name = (t) => esc(types[t].label || 'Box');
+    let html = '<table class="heat"><thead><tr><th></th>';
+    for (let c = 0; c < nT; c++) html += `<th class="colh" scope="col"><span class="sw" style="display:inline-block;background:${colorVar(types[c].item)}"></span> ${name(c)}</th>`;
+    html += '</tr></thead><tbody>';
+    const rows = [nT, ...Array.from({ length: nT }, (_, i) => i)];
+    for (const r of rows) {
+      html += `<tr><th class="rowh" scope="row">${r === nT ? '<i>new sheet</i>' : 'after ' + name(r)}</th>`;
+      for (let c = 0; c < nT; c++) {
+        const v = snap[r * nT + c];
+        const norm = Math.max(0, Math.min(1, (v - tMin) / (tMax - tMin || 1)));
+        const pct = Math.round(8 + norm * 82);
+        html += `<td title="${name(c)} after ${r === nT ? 'a new sheet' : name(r)}: τ = ${(v / tMax).toFixed(2)} of cap" style="background:color-mix(in oklab, var(--accent) ${pct}%, var(--sheet));color:${norm > 0.55 ? 'var(--accent-ink)' : 'var(--ink)'}">${(v / tMax).toFixed(2).replace(/^0/, '')}</td>`;
+      }
+      html += '</tr>';
+    }
+    html += '</tbody></table>';
+    $('heat').innerHTML = html;
+  }
+  $('heatSlider').oninput = (e) => state.result && renderHeat(state.result, +e.target.value);
+
+  // ---------- replay ----------
+  let stepIdx = 0, playing = null;
+  function renderStep(res, k) {
+    const steps = res.trace;
+    if (!steps.length) return;
+    k = Math.max(0, Math.min(steps.length - 1, k));
+    stepIdx = k;
+    $('stepSlider').value = k;
+    $('stepLabel').textContent = `${k + 1} / ${steps.length}`;
+    const st = steps[k];
+    const types = res.ctx.types;
+    const lab = (t) => types[t].label || 'Box';
+    const sheetParts = [];
+    for (let i = 0; i <= k; i++) if (steps[i].sheet === st.sheet) sheetParts.push({ ...steps[i].part, item: types[steps[i].part.t].item, t: types[steps[i].part.t].item });
+    const ghosts = st.cands.filter((c, i) => i !== st.pick).map((c) => {
+      const ty = types[c.t];
+      return { x: c.x, y: c.y, w: c.rot ? ty.h : ty.w, h: c.rot ? ty.w : ty.h, t: ty.item };
+    });
+    const el = $('replaySheet');
+    el.innerHTML = '';
+    el.appendChild(drawSheet(res.ctx.sheetW, res.ctx.sheetH, sheetParts, res.labels, { highlight: sheetParts.at(-1), ghosts, dimBefore: sheetParts.length - 1, maxH: 380, noText: true }));
+    const cap = document.createElement('div');
+    cap.className = 'hint'; cap.style.marginTop = '4px';
+    cap.textContent = `Sheet ${st.sheet + 1} as the ant saw it. Yellow outline = the box it just placed.`;
+    el.appendChild(cap);
+
+    const chosen = st.cands[st.pick];
+    const opened = k > 0 && steps[k - 1].sheet !== st.sheet;
+    let narr = `<b>Step ${k + 1}.</b> `;
+    if (k === 0) narr += 'Fresh sheet, so ants read the “new sheet” row of the pheromone map. ';
+    else if (opened) narr += `Nothing left fit on sheet ${st.sheet}, so the ant started sheet ${st.sheet + 1}. `;
+    else narr += `The last box placed was <b>${esc(lab(st.prev))}</b>, so pheromone comes from that row. `;
+    if (st.cands.length === 1) narr += `Only <b>${esc(lab(chosen.t))}</b> still fit, so there was no choice to make.`;
+    else if (st.r == null) narr += `The greedy pass took the highest-scoring box, <b>${esc(lab(chosen.t))}</b>.`;
+    else {
+      const top = st.cands.reduce((a, b) => (b.p > a.p ? b : a));
+      narr += `${st.cands.length} box types could fit. The ant drew <span class="mono">${st.r.toFixed(3)}</span> and landed on <b>${esc(lab(chosen.t))}</b> (${(chosen.p * 100).toFixed(0)}% chance)`;
+      narr += top === chosen ? ', the favourite.' : `, over the favourite <b>${esc(lab(top.t))}</b> at ${(top.p * 100).toFixed(0)}%. Exploration like this is how the colony finds layouts greedy packing misses.`;
+    }
+    if (chosen.rot) narr += ' It went in rotated because that fit the gap more tightly.';
+    $('narr').innerHTML = narr;
+
+    const tMax = res.tauMax;
+    let html = '<thead><tr><th></th><th>Box</th><th style="text-align:right">τ</th><th style="text-align:right">η</th><th>P</th><th style="text-align:right"></th></tr></thead><tbody>';
+    const order = st.cands.map((c, i) => ({ c, i })).sort((a, b) => b.c.p - a.c.p);
+    for (const { c, i } of order) {
+      const ty = types[c.t];
+      html += `<tr class="${i === st.pick ? 'chosen' : ''}"><td><span class="sw" style="background:${colorVar(ty.item)}"></span></td>
+        <td>${esc(lab(c.t))} <span class="mono muted">${fmtLen(ty.w, state.unit)}×${fmtLen(ty.h, state.unit)}${c.rot ? ' ↻' : ''}</span></td>
+        <td class="n">${(c.tau / tMax).toFixed(2)}</td><td class="n">${c.eta.toFixed(3)}</td>
+        <td style="width:30%"><div class="pbar"><i style="width:${(c.p * 100).toFixed(1)}%"></i></div></td>
+        <td class="n">${(c.p * 100).toFixed(1)}%</td></tr>`;
+    }
+    $('candTable').innerHTML = html + '</tbody>';
+  }
+  $('stepSlider').oninput = (e) => state.result && renderStep(state.result, +e.target.value);
+  $('stepBack').onclick = () => state.result && renderStep(state.result, stepIdx - 1);
+  $('stepFwd').onclick = () => state.result && renderStep(state.result, stepIdx + 1);
+  function stopPlay() { if (playing) { clearInterval(playing); playing = null; $('play').textContent = 'Play'; } }
+  $('play').onclick = () => {
+    if (!state.result) return;
+    if (playing) return stopPlay();
+    if (stepIdx >= state.result.trace.length - 1) stepIdx = -1;
+    $('play').textContent = 'Pause';
+    playing = setInterval(() => {
+      if (stepIdx >= state.result.trace.length - 1) return stopPlay();
+      renderStep(state.result, stepIdx + 1);
+    }, 450);
+  };
+
+  function renderResult() {
+    const res = state.result;
+    if (!res) return;
+    stopPlay();
+    renderStats(res, false);
+    renderWarnings(res);
+    renderLegend(res);
+    renderSheets(res, res.best);
+    renderConv(res.history, res.greedy.fitness, res.params.iterations, res.restarts, res.bestIter);
+    const hs = $('heatSlider');
+    hs.max = res.snapshots.length - 1;
+    hs.value = res.snapshots.length - 1;
+    renderHeat(res, res.snapshots.length - 1);
+    $('stepSlider').max = Math.max(0, res.trace.length - 1);
+    $('replayMeta').textContent = res.bestFromGreedy
+      ? 'No ant beat the greedy pass, so this replays the greedy layout.'
+      : `Found in iteration ${res.bestIter} of ${res.params.iterations}.`;
+    const single = res.ctx.nT === 1;
+    $('insightLead').textContent = single
+      ? 'There is only one box size, so the order of boxes cannot change anything. The layout comes from the placement rule alone and the colony has nothing to learn.'
+      : 'Each iteration, every ant builds a full layout. The best one leaves pheromone on the choices it made, and the next ants lean toward those choices.';
+    renderStep(res, Math.min(stepIdx, res.trace.length - 1));
+  }
+
+  let rsz = 0;
+  new ResizeObserver(() => {
+    clearTimeout(rsz);
+    rsz = setTimeout(() => {
+      if (state.result && !state.running) renderConv(state.result.history, state.result.greedy.fitness, state.result.params.iterations, state.result.restarts, state.result.bestIter);
+    }, 120);
+  }).observe($('convChart'));
+
+  loadPreset('cabinet');
+  run();
+})();
+</script>
+</body>
+</html>
