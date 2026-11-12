@@ -335,13 +335,13 @@ svg text { font-family: var(--f-mono); }
             </ul>
           </div>
           <div>
-            <h3>Fixed from the original</h3>
+            <h3>Changes from v1</h3>
             <ul>
-              <li><b>Pheromone landed on the wrong boxes.</b> The update added to indices 0…k−1 instead of the boxes that were packed.</li>
-              <li><b>Ants shared one set of box objects across threads,</b> so positions and rotations overwrote each other. The “best” layout could have overlaps and negative scores.</li>
-              <li><b>The heuristic was area⁸</b> (area⁴, then squared), which drowned out pheromone completely.</li>
-              <li><b>The animation re-packed the boxes greedily</b> and never showed the ACO result.</li>
-              <li><b>Integer grid scan only</b>, so decimal sizes and kerf were impossible.</li>
+              <li><b>Pheromone tracks what ants actually packed,</b> on “after A, place B” pairs, so the colony can learn ordering.</li>
+              <li><b>Each ant builds its layout independently.</b></li>
+              <li><b>The heuristic is balanced with pheromone</b> instead of outweighing it.</li>
+              <li><b>The layout shown is the one the colony found.</b></li>
+              <li><b>Continuous placement</b> adds decimal sizes, kerf, units and multiple sheets.</li>
             </ul>
           </div>
         </div>
