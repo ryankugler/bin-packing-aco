@@ -1,5 +1,7 @@
 # 2D Rectangle Packing with Ant Colony Optimization
 
+**Try it live: [bin-packing-aco.vercel.app](https://bin-packing-aco.vercel.app)**
+
 ![Veed Video Aug 27](https://github.com/user-attachments/assets/dc8677fc-9078-491f-9f0f-9c7b103019e7)
 
 
@@ -12,7 +14,7 @@ This project packs rectangles onto fixed-size sheets with Ant Colony Optimizatio
 
 ## Web app
 
-Open `web/index.html` through any static server (Web Workers don't run from `file://`):
+Live at **https://bin-packing-aco.vercel.app**. To run it locally, serve `web/` with any static server (Web Workers don't run from `file://`):
 
 ```bash
 python3 -m http.server 8000 --directory web
