@@ -17,8 +17,14 @@ function check(input, res) {
   }
   const want = input.items.reduce((s, i) => s + i.qty, 0) - res.ctx.unplaceable.reduce((s, u) => s + u.qty, 0);
   assert.strictEqual(n, want, 'every placeable box is placed exactly once');
-  const replay = res.trace.map((s) => s.part), placed = res.best.sheets.flatMap((s) => s.parts);
-  assert.deepStrictEqual(replay, placed, 'traced replay reproduces the best layout');
+  assert(res.replayMatches, 'traced replay reproduces the best layout');
+  assert.deepStrictEqual(res.trace.map((s) => s.part.t), res.best.sheets.flatMap((s) => s.parts.map((p) => p.t)), 'replay places the same boxes in the same order');
+  for (const s of res.best.sheets) {
+    const o = s.offcutRect;
+    if (!o) continue;
+    assert(o.x > -1e-6 && o.y > -1e-6 && o.x + o.w < W + 1e-6 && o.y + o.h < H + 1e-6, 'offcut inside sheet');
+    for (const p of s.parts) assert(o.x + o.w + k <= p.x + 1e-6 || p.x + p.w + k <= o.x + 1e-6 || o.y + o.h + k <= p.y + 1e-6 || p.y + p.h + k <= o.y + 1e-6, 'offcut overlaps a box');
+  }
   assert(res.best.fitness >= res.greedy.fitness, 'never worse than greedy');
 }
 

@@ -47,17 +47,23 @@ Run the solver tests with `node web/solver.test.js`.
    - **τ (pheromone)** = `tau[previous type][this type]`. A fresh sheet uses a special "new sheet" row.
    - **η (heuristic)** = `(area / largest area) × (0.2 + 0.8 × snugness)`, where snugness = box area ÷ area of the free rectangle it would land in. Large boxes go first, and boxes that fill a gap tightly get a boost.
 4. The ant draws one candidate at random in proportion to its weight and places it.
-5. When nothing else fits, the sheet is closed and a new one is opened.
+5. When nothing else fits, the sheet is closed. Every box then slides up and to the left as far as it can (also tried left-then-up, keeping whichever leaves the bigger open rectangle). This gathers the leftover into one corner, where it can be cut off and reused. Then a new sheet is opened.
 
 ### Fitness
 
-Falkenauer's bin-packing score, higher is better:
+Higher is better:
 
 $$
-f = \frac{1}{N}\sum_{i=1}^{N} \text{fill}_i^2 \; + \; \frac{0.1 \cdot \text{largest offcut on last sheet}}{N}
+f = \frac{1}{N}\sum_{i=1}^{N} \left(\text{fill}_i^2 - 2 \cdot \text{scrap}_i\right) \; + \; \frac{0.1 \cdot \text{largest offcut on last sheet}}{N}
 $$
 
-Squaring the fill rewards packing early sheets full and leaving the last one nearly empty. That beats spreading the boxes evenly, and it is what lets the search drop a sheet. The offcut bonus breaks ties toward a usable leftover piece.
+- **fill²** is Falkenauer's bin-packing score. Squaring the fill rewards packing early sheets full and leaving the last one nearly empty, rather than spreading boxes evenly. That is what lets the search drop a sheet.
+- **scrap** is the leftover on a sheet that isn't part of its biggest empty rectangle. These are the scattered gaps between boxes that are hard to reuse. Penalizing it pushes the colony to keep each sheet's leftover in one piece. The weight (default 2) is the *Scrap penalty* setting.
+- The **offcut bonus** breaks ties toward a usable leftover piece on the last sheet.
+
+On 21 test jobs, the scrap penalty plus sliding cut scattered scrap from 6.2% to 4.6% of each sheet on average, with no extra sheets. On the cabinet example it went from 6.3% to 3.5%. Changing where boxes are placed (packing toward a corner) used 3 more sheets, and a fragmentation term in the heuristic didn't help, so neither is included.
+
+The app hatches each sheet's biggest leftover rectangle as the **reusable offcut** and reports material used, reusable offcuts and scrap separately.
 
 ### Learning (MAX-MIN Ant System)
 

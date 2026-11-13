@@ -7,7 +7,7 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
 <style>
 /* Layout: workbench. Config rail on the left, sheets and the colony's reasoning on the right. */
 :root {
@@ -26,9 +26,9 @@
   --c0: #6b9bd1; --c1: #e39a5b; --c2: #7cb98a; --c3: #c97fb4; --c4: #d8c157;
   --c5: #64b8b4; --c6: #b98a6a; --c7: #9a8fd6; --c8: #d9787a; --c9: #8fb45a;
   --part-stroke: rgba(20, 30, 25, .55);
-  --f-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
-  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --f-display: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif; /* numbers use tabular figures */
   --r: 6px;
 }
 @media (prefers-color-scheme: dark) {
@@ -61,16 +61,16 @@ body {
   padding-block: 20px 48px;
 }
 h1, h2, h3 { font-family: var(--f-display); font-weight: 600; letter-spacing: .01em; margin: 0; text-wrap: balance; }
-h1 { font-size: 34px; line-height: 1; font-weight: 700; }
-h2 { font-size: 24px; line-height: 1.1; }
-h3 { font-size: 18px; }
+h1 { font-size: 32px; line-height: 1; font-weight: 700; }
+h2 { font-size: 21px; line-height: 1.1; }
+h3 { font-size: 16px; }
 p { margin: 0; }
 .mono, input, .num { font-variant-numeric: tabular-nums; }
-.mono { font-family: var(--f-mono); }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
 .muted { color: var(--muted); }
 .label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
 
-.wrap { max-width: 1320px; margin: 0 auto; display: grid; gap: 20px; }
+.wrap { max-width: 1480px; margin: 0 auto; display: grid; gap: 20px; }
 header.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 24px; padding-bottom: 14px; border-bottom: 2px solid var(--ink); }
 header.top .tag { max-width: 60ch; color: var(--muted); }
 .ruler { height: 8px; margin-top: -14px; background-image: repeating-linear-gradient(90deg, var(--ink) 0 1px, transparent 1px 12px), repeating-linear-gradient(90deg, var(--ink) 0 1px, transparent 1px 60px); background-size: auto 4px, auto 8px; background-repeat: repeat-x; opacity: .5; }
@@ -101,7 +101,7 @@ input.bad { border-color: var(--warn); background: var(--warn-bg); }
 button { font: inherit; }
 .btn { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 4px; padding: 6px 12px; cursor: pointer; font-weight: 500; }
 .btn:hover { border-color: var(--muted); }
-.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-family: var(--f-display); font-size: 18px; font-weight: 600; letter-spacing: .03em; padding: 8px 14px; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-family: var(--f-display); font-size: 16px; font-weight: 600; letter-spacing: .03em; padding: 8px 14px; }
 .btn.primary:hover { filter: brightness(1.08); }
 .btn.small { padding: 3px 8px; font-size: 12px; }
 .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
@@ -116,7 +116,8 @@ button { font: inherit; }
 
 details { border-top: 1px solid var(--line); padding-top: 10px; }
 summary { cursor: pointer; font-weight: 600; font-size: 13px; }
-.params { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.params { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 10px; }
+.check input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); margin: 8px 0; }
 .hint { font-size: 12px; color: var(--muted); }
 .err { font-size: 12px; color: var(--warn); }
 
@@ -126,17 +127,18 @@ summary { cursor: pointer; font-weight: 600; font-size: 13px; }
 main { display: grid; gap: 20px; min-width: 0; }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
 .stat { background: var(--panel); padding: 12px 14px; display: grid; gap: 2px; }
-.stat b { font: 600 28px/1.1 var(--f-display); }
+.stat b { font: 600 26px/1.15 var(--f-display); font-variant-numeric: tabular-nums; }
 .stat .d { font-size: 12px; color: var(--muted); }
 .good { color: var(--accent); }
 
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; background: var(--warn-bg); color: var(--warn); border: 1px solid currentColor; }
 
-.sheets { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 16px; }
+.sheets { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 24px; }
+.offcut-sw { display: inline-block; width: 14px; height: 12px; vertical-align: -1px; margin-right: 5px; border: 1px dashed var(--muted); background: repeating-linear-gradient(45deg, transparent 0 3px, color-mix(in oklab, var(--muted) 45%, transparent) 3px 4px); }
 .sheet-card { display: grid; gap: 6px; min-width: 0; }
 .sheet-card .cap { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
 svg { display: block; max-width: 100%; }
-svg text { font-family: var(--f-mono); }
+svg text { font-family: var(--f-body); font-variant-numeric: tabular-nums; }
 
 .section-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 8px 16px; }
 .section-head p { max-width: 70ch; }
@@ -177,11 +179,11 @@ svg text { font-family: var(--f-mono); }
 /* tabs, steps, help dialog */
 .top-right { display: flex; align-items: end; gap: 16px; flex-wrap: wrap; justify-content: flex-end; }
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-top: -6px; }
-.tab { border: 0; background: transparent; padding: 8px 16px; font: 600 18px var(--f-display); letter-spacing: .02em; color: var(--muted); cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -1px; }
+.tab { border: 0; background: transparent; padding: 8px 16px; font: 600 15px var(--f-display); letter-spacing: .01em; color: var(--muted); cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -1px; }
 .tab:hover { color: var(--ink); }
 .tab[aria-selected=true] { color: var(--ink); border-bottom-color: var(--accent); }
 .tab:focus-visible { outline: 2px solid var(--mark); outline-offset: -2px; }
-.step { display: flex; align-items: center; gap: 8px; font: 600 17px var(--f-display); letter-spacing: .02em; }
+.step { display: flex; align-items: center; gap: 8px; font: 600 15px var(--f-display); }
 .step b { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--ink); color: var(--panel); font: 600 13px var(--f-mono); }
 .sheet-card .contents { font-size: 12px; color: var(--muted); }
 dialog#help { border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); color: var(--ink); padding: 0; width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
@@ -274,7 +276,7 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
       <section class="panel" aria-labelledby="hSheets">
         <div class="section-head">
           <h2 id="hSheets">Your layout</h2>
-          <p class="hint">Hover or tap a box to see its size and position from the sheet's top-left corner.</p>
+          <p class="hint">Hover or tap a box to see its size and position from the sheet's top-left corner. The hatched area on each sheet is the biggest leftover piece you can cut off and keep.</p>
         </div>
         <div class="legend" id="typeLegend"></div>
         <div class="sheets" id="sheets"><div class="empty">Add your boxes, then press Find best layout.</div></div>
@@ -297,13 +299,15 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
           <div class="field"><label class="hint" for="pAlpha">α pheromone weight</label><input type="number" id="pAlpha" min="0" max="5" step="0.1"></div>
           <div class="field"><label class="hint" for="pBeta">β heuristic weight</label><input type="number" id="pBeta" min="0" max="8" step="0.1"></div>
           <div class="field"><label class="hint" for="pEvap">Evaporation</label><input type="number" id="pEvap" min="0.01" max="0.9" step="0.01"></div>
+          <div class="field"><label class="hint" for="pScrap">Scrap penalty</label><input type="number" id="pScrap" min="0" max="10" step="0.5"></div>
+          <label class="field check" for="pCompact"><span class="hint">Slide boxes together</span><span class="row" style="align-items:center;gap:6px"><input type="checkbox" id="pCompact"> <span class="hint">after each sheet</span></span></label>
         </div>
         <div class="row" style="align-items:center">
           <button class="btn primary" id="runAdv" type="button">Run again</button>
           <button class="btn" id="resetParams" type="button">Reset to defaults</button>
           <span class="hint" id="statusAdv" style="flex:1 1 200px"></span>
         </div>
-        <p class="hint">α = 0 turns learning off, so ants sample from the heuristic alone. Higher β makes them greedier. Evaporation is the share of pheromone lost each round. The same seed always gives the same result.</p>
+        <p class="hint">α = 0 turns learning off, so ants sample from the heuristic alone. Higher β makes them greedier. Evaporation is the share of pheromone lost each round. Scrap penalty sets how hard layouts are pushed to keep leftover in one piece (0 = ignore it). Sliding moves every box up and left once a sheet is full so the leftover gathers in a corner. The same seed always gives the same result.</p>
       </section>
 
       <section class="panel" aria-labelledby="hInsight">
@@ -322,7 +326,7 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
               <span><i style="border-color:var(--mark);border-top-style:dashed"></i>Greedy baseline</span>
             </div>
             <div id="convChart"></div>
-            <p class="hint">Score is Σ(sheet fill²) ÷ sheets, plus a small bonus for a big leftover piece on the last sheet. Higher is better. Vertical ticks mark pheromone resets after the colony stalled.</p>
+            <p class="hint">Score is Σ(sheet fill² − 2 × scrap) ÷ sheets, plus a small bonus for a big leftover piece on the last sheet. Scrap is leftover that isn't part of a sheet's biggest empty rectangle. Higher is better. Vertical ticks mark pheromone resets after the colony stalled.</p>
             <h3 style="margin-top:6px">Decisiveness</h3>
             <div id="entChart"></div>
             <p class="hint">Average entropy of each ant's choices: 1 means every candidate was equally likely, 0 means the ant always knew what to pick. It falls as pheromone builds up.</p>
@@ -376,6 +380,7 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
               <li>Pheromone sits on pairs: “after box A, place box B”. Identical boxes share one type, so what one learns applies to all copies.</li>
               <li>Max-Min Ant System: all trails evaporate, only the round's best ant deposits (the all-time best every 5th round), and trails stay between a floor and a cap so no option dies out.</li>
               <li>If 25 rounds pass with no improvement, trails reset to the cap and the search restarts.</li>
+              <li>Layouts lose points for scrap: leftover space that isn't part of the sheet's biggest empty rectangle. This pushes the colony to keep waste in one piece you can cut off and reuse.</li>
             </ul>
           </div>
           <div>
@@ -404,7 +409,7 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
       <li><b>Pick your units.</b> Inches, feet, millimetres, centimetres or metres. Fractions work, like <span class="mono">23 1/4</span>. You can also type a unit after any number, like <span class="mono">600mm</span>.</li>
       <li><b>Enter your sheet size.</b> If you're cutting, set the gap to your saw blade's width so every box comes out full size.</li>
       <li><b>List your boxes.</b> Give each size a name, its width and height, and how many you need. Tick ↻ if it can be turned sideways.</li>
-      <li><b>Press Find best layout.</b> You'll see each sheet with every box drawn in place, plus how much material is used and wasted.</li>
+      <li><b>Press Find best layout.</b> You'll see each sheet with every box drawn in place. The hatched area is the leftover piece you can cut off and keep.</li>
     </ol>
     <p class="hint">Not sure where to start? Pick one of the examples under the button. Curious how the layout was chosen? The Advanced tab shows the algorithm's work step by step.</p>
     <div class="row" style="justify-content:flex-end">
@@ -466,7 +471,7 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
     unit: 'in',
     sheetW: 48 * 25.4, sheetH: 96 * 25.4, kerf: 0.125 * 25.4,
     items: [],
-    params: { ants: 20, iterations: 80, seed: 7, alpha: 1, beta: 2, evaporation: 0.1 },
+    params: { ants: 20, iterations: 80, seed: 7, alpha: 1, beta: 2, evaporation: 0.1, scrapWeight: 2, compact: true },
     result: null,
     live: null,
     running: false,
@@ -570,6 +575,7 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
     const P = state.params;
     $('pAnts').value = P.ants; $('pIters').value = P.iterations; $('pSeed').value = P.seed;
     $('pAlpha').value = P.alpha; $('pBeta').value = P.beta; $('pEvap').value = P.evaporation;
+    $('pScrap').value = P.scrapWeight; $('pCompact').checked = !!P.compact;
     validate();
   }
 
@@ -582,6 +588,8 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
     P.alpha = clamp(+$('pAlpha').value, 0, 5, 1);
     P.beta = clamp(+$('pBeta').value, 0, 8, 2);
     P.evaporation = clamp(+$('pEvap').value, 0.01, 0.9, 0.1);
+    P.scrapWeight = clamp(+$('pScrap').value, 0, 10, 2);
+    P.compact = $('pCompact').checked;
   }
 
   function validate() {
@@ -679,7 +687,7 @@ onmessage = (e) => {
   }
   $('run').onclick = () => run({ scroll: true });
   $('runAdv').onclick = () => run();
-  $('resetParams').onclick = () => { Object.assign(state.params, S.DEFAULTS); renderForm(); };
+  $('resetParams').onclick = () => { for (const k of Object.keys(state.params)) if (k in S.DEFAULTS) state.params[k] = S.DEFAULTS[k]; renderForm(); };
 
   // ---------- rendering helpers ----------
   const NS = 'http://www.w3.org/2000/svg';
@@ -707,6 +715,23 @@ onmessage = (e) => {
     for (let y = step; y < H - 1e-6; y += step) svgEl('line', { x1: 0, y1: y, x2: W, y2: y }, g);
 
     const sw = Math.max(W, H) * 0.0018;
+    const oc = opts.offcut;
+    if (oc && Math.min(oc.w, oc.h) >= Math.max(W, H) * 0.03) {
+      const pid = 'hatch' + Math.random().toString(36).slice(2);
+      const step = Math.max(W, H) * 0.012;
+      const pat = svgEl('pattern', { id: pid, width: step, height: step, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' }, svgEl('defs', {}, svg));
+      svgEl('line', { x1: 0, y1: 0, x2: 0, y2: step, stroke: 'var(--muted)', 'stroke-width': step * 0.18, opacity: 0.45 }, pat);
+      const r = svgEl('rect', { x: oc.x, y: oc.y, width: oc.w, height: oc.h, fill: `url(#${pid})`, stroke: 'var(--muted)', 'stroke-width': sw * 1.4, 'stroke-dasharray': `${sw * 5} ${sw * 3}` }, svg);
+      svgEl('title', {}, r).textContent = `Reusable offcut · ${fmtLen(oc.w, state.unit)} × ${fmtLen(oc.h, state.unit)} ${state.unit}`;
+      const size = Math.min(Math.min(oc.w, oc.h) * 0.2, Math.max(W, H) * 0.028);
+      const dims = `${fmtLen(oc.w, state.unit)} × ${fmtLen(oc.h, state.unit)}`;
+      if (dims.length * size * 0.6 < oc.w * 0.9 && oc.h > size * 2.8) {
+        for (const [txt, dy, wt] of [['Offcut', -0.65, 600], [dims, 0.65, 400]]) {
+          const t = svgEl('text', { x: oc.x + oc.w / 2, y: oc.y + oc.h / 2 + dy * size, 'font-size': size, 'font-weight': wt, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: 'var(--muted)', 'pointer-events': 'none', 'paint-order': 'stroke', stroke: 'var(--sheet)', 'stroke-width': size * 0.25 }, svg);
+          t.textContent = txt;
+        }
+      }
+    }
     parts.forEach((p, i) => {
       const r = svgEl('rect', {
         x: p.x, y: p.y, width: p.w, height: p.h,
@@ -812,13 +837,16 @@ onmessage = (e) => {
     const g = res.greedy;
     const dSheets = g.sheets.length - best.sheets.length;
     const lift = g.fitness > 0 ? ((best.fitness - g.fitness) / g.fitness) * 100 : 0;
-    const lastFill = best.fills.at(-1) || 0;
+    const sheetA = res.ctx.sheetW * res.ctx.sheetH;
+    const offFrac = best.sheets.reduce((a, sh) => a + (sh.offcutRect ? (sh.offcutRect.w * sh.offcutRect.h) / sheetA : 0), 0) / (best.sheets.length || 1);
+    const scrapFrac = Math.max(0, 1 - best.utilization - offFrac);
     const waste = 1 - best.utilization;
     el.innerHTML = `
       <div class="stat"><span class="label">Sheets needed</span><b class="num">${best.sheets.length}</b><span class="d">each ${fmtLen(res.ctx.sheetW, state.unit)} × ${fmtLen(res.ctx.sheetH, state.unit)} ${state.unit}</span></div>
       <div class="stat"><span class="label">Material used</span><b class="num">${(best.utilization * 100).toFixed(0)}%</b><span class="d">${(waste * 100).toFixed(0)}% left over</span></div>
+      <div class="stat"><span class="label">Reusable offcuts</span><b class="num">${(offFrac * 100).toFixed(0)}%</b><span class="d">leftover kept in one piece per sheet</span></div>
       <div class="stat"><span class="label">Boxes placed</span><b class="num">${placed}<span class="muted" style="font-size:18px"> / ${want}</span></b><span class="d">${want - placed ? `${want - placed} too big for the sheet` : 'all of them fit'}</span></div>
-      <div class="stat"><span class="label">Last sheet</span><b class="num">${(lastFill * 100).toFixed(0)}%</b><span class="d">full, the rest is a usable offcut</span></div>`;
+      <div class="stat"><span class="label">Scrap</span><b class="num">${(scrapFrac * 100).toFixed(0)}%</b><span class="d">small gaps between boxes</span></div>`;
     if (!live) renderAdvSummary(res, lift, dSheets);
   }
 
@@ -849,7 +877,7 @@ onmessage = (e) => {
       const card = document.createElement('div');
       card.className = 'sheet-card';
       const parts = sh.parts.map((p) => ({ ...p, item: types[p.t].item, t: types[p.t].item }));
-      card.appendChild(drawSheet(res.ctx.sheetW, res.ctx.sheetH, parts, res.labels, { maxH: 460 }));
+      card.appendChild(drawSheet(res.ctx.sheetW, res.ctx.sheetH, parts, res.labels, { maxH: Math.round(Math.min(900, Math.max(520, innerHeight * 0.85))), offcut: sh.offcutRect }));
       const cap = document.createElement('div');
       cap.className = 'cap';
       cap.innerHTML = `<span><b>Sheet ${i + 1}</b> · ${sh.parts.length} box${sh.parts.length === 1 ? '' : 'es'}</span><span class="mono muted">${(best.fills[i] * 100).toFixed(0)}% used</span>`;
@@ -860,6 +888,12 @@ onmessage = (e) => {
       list.className = 'contents';
       list.textContent = [...counts].map(([it, n]) => `${n} × ${res.labels[it] || 'Box'}`).join(', ');
       card.appendChild(list);
+      if (sh.offcutRect) {
+        const oc = document.createElement('div');
+        oc.className = 'contents';
+        oc.innerHTML = `<span class="offcut-sw"></span>Offcut: <b>${fmtLen(sh.offcutRect.w, state.unit)} × ${fmtLen(sh.offcutRect.h, state.unit)} ${state.unit}</b>`;
+        card.appendChild(oc);
+      }
       el.appendChild(card);
     });
     if (!best.sheets.length) el.innerHTML = '<div class="empty">Nothing could be placed. Check that boxes are smaller than the sheet.</div>';
@@ -867,7 +901,7 @@ onmessage = (e) => {
 
   function renderLegend(res) {
     const el = $('typeLegend');
-    el.innerHTML = res.ctx.types.map((t) => `<span><span class="sw" style="display:inline-block;vertical-align:-1px;margin-right:5px;background:${colorVar(t.item)}"></span>${esc(t.label || 'Box')} <span class="mono">${fmtLen(t.w, state.unit)}×${fmtLen(t.h, state.unit)}</span> ×${t.qty}</span>`).join('');
+    el.innerHTML = '<span><span class="offcut-sw"></span>Reusable offcut</span>' + res.ctx.types.map((t) => `<span><span class="sw" style="display:inline-block;vertical-align:-1px;margin-right:5px;background:${colorVar(t.item)}"></span>${esc(t.label || 'Box')} <span class="mono">${fmtLen(t.w, state.unit)}×${fmtLen(t.h, state.unit)}</span> ×${t.qty}</span>`).join('');
   }
 
   function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
@@ -965,6 +999,8 @@ onmessage = (e) => {
       narr += top === chosen ? ', the favourite.' : `, over the favourite <b>${esc(lab(top.t))}</b> at ${(top.p * 100).toFixed(0)}%. Exploration like this is how the colony finds layouts greedy packing misses.`;
     }
     if (chosen.rot) narr += ' It went in rotated because that fit the gap more tightly.';
+    const lastOnSheet = k === steps.length - 1 || steps[k + 1].sheet !== st.sheet;
+    if (lastOnSheet && res.params.compact) narr += ' That was the last box for this sheet, so every box was then slid up and to the left to gather the leftover into one piece. The Layout tab shows those final positions.';
     $('narr').innerHTML = narr;
 
     const tMax = res.tauMax;
