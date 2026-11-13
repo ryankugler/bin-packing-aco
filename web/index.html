@@ -26,6 +26,7 @@
   --c0: #6b9bd1; --c1: #e39a5b; --c2: #7cb98a; --c3: #c97fb4; --c4: #d8c157;
   --c5: #64b8b4; --c6: #b98a6a; --c7: #9a8fd6; --c8: #d9787a; --c9: #8fb45a;
   --part-stroke: rgba(20, 30, 25, .55);
+  --cut: #c2410c;
   --f-display: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif; /* numbers use tabular figures */
@@ -39,10 +40,12 @@
     --c0: #5a86b8; --c1: #c7814a; --c2: #5f9c6e; --c3: #a96697; --c4: #b9a344;
     --c5: #4d9d99; --c6: #9c7255; --c7: #7f74b9; --c8: #bb6062; --c9: #76973f;
     --part-stroke: rgba(0, 0, 0, .6);
+    --cut: #fb923c;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
+  --cut: #fb923c;
   --bg: #121815; --panel: #19211d; --ink: #e3ebe6; --muted: #93a39b; --line: #2c3833;
   --accent: #47b48e; --accent-ink: #0c1411; --mark: #f0bd3a; --sheet: #202a25; --grid: #2b3731;
   --warn: #f29a6e; --warn-bg: #2e1f17;
@@ -53,6 +56,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; }
 body {
   background: var(--bg); color: var(--ink); font: 14px/1.5 var(--f-body);
@@ -75,7 +79,7 @@ header.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: 
 header.top .tag { max-width: 60ch; color: var(--muted); }
 .ruler { height: 8px; margin-top: -14px; background-image: repeating-linear-gradient(90deg, var(--ink) 0 1px, transparent 1px 12px), repeating-linear-gradient(90deg, var(--ink) 0 1px, transparent 1px 60px); background-size: auto 4px, auto 8px; background-repeat: repeat-x; opacity: .5; }
 
-.layout { display: grid; grid-template-columns: minmax(320px, 400px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.layout { display: grid; grid-template-columns: minmax(340px, 440px) minmax(0, 1fr); gap: 20px; align-items: start; }
 @media (max-width: 880px) { .layout { grid-template-columns: minmax(0, 1fr); } }
 
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; gap: 14px; min-width: 0; }
@@ -108,10 +112,29 @@ button { font: inherit; }
 .btn.ghost:hover { color: var(--warn); }
 
 .boxes { display: grid; gap: 6px; }
-.box-head, .box-row { display: grid; grid-template-columns: 12px minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr) 50px 22px 22px; gap: 5px; align-items: center; }
+.box-head, .box-row { display: grid; grid-template-columns: 12px minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr) 48px 78px 22px; gap: 5px; align-items: center; }
 .box-head { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; }
 .box-row input { padding: 5px 6px; font-size: 13px; }
-.box-row input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); margin: 0 auto; }
+@media (max-width: 520px) {
+  .box-head, .box-row { grid-template-columns: 12px minmax(0, 1fr) minmax(0, 1fr) 52px 88px 24px; row-gap: 5px; }
+  .box-row { grid-template-areas: "sw name name name name del" ". w h q rot ."; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+  .box-head { grid-template-areas: ". w h q rot ."; }
+  .box-row > :nth-child(1) { grid-area: sw; } .box-row > :nth-child(2) { grid-area: name; }
+  .box-row > :nth-child(3) { grid-area: w; } .box-row > :nth-child(4) { grid-area: h; }
+  .box-row > :nth-child(5) { grid-area: q; } .box-row > :nth-child(6) { grid-area: rot; }
+  .box-row > :nth-child(7) { grid-area: del; }
+  .box-head > :nth-child(1), .box-head > :nth-child(2), .box-head > :nth-child(7) { display: none; }
+  .box-head > :nth-child(3) { grid-area: w; } .box-head > :nth-child(4) { grid-area: h; }
+  .box-head > :nth-child(5) { grid-area: q; } .box-head > :nth-child(6) { grid-area: rot; }
+}
+.rot-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 4px; width: 100%; padding: 5px 4px; border-radius: 4px; font: 600 11.5px var(--f-body); cursor: pointer; border: 1px solid var(--line); background: transparent; color: var(--muted); white-space: nowrap; }
+.rot-toggle[aria-pressed=true] { background: color-mix(in oklab, var(--accent) 14%, transparent); border-color: color-mix(in oklab, var(--accent) 55%, transparent); color: var(--accent); }
+.rot-toggle:hover { border-color: var(--muted); }
+.rot-toggle:focus-visible { outline: 2px solid var(--mark); outline-offset: 1px; }
+.mode-note { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: var(--r); background: var(--panel); border: 1px solid var(--line); font-size: 13px; }
+.mode-note b { font-family: var(--f-display); font-weight: 600; }
+.mode-note .cmp { color: var(--muted); }
+.cut-sw { display: inline-block; width: 16px; height: 0; border-top: 2px dashed var(--cut); vertical-align: middle; margin-right: 5px; }
 .sw { width: 12px; height: 12px; border-radius: 2px; border: 1px solid var(--part-stroke); }
 
 details { border-top: 1px solid var(--line); padding-top: 10px; }
@@ -211,7 +234,8 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
   <div class="ruler" aria-hidden="true"></div>
 
   <nav class="tabs" role="tablist" aria-label="Views">
-    <button class="tab" role="tab" id="tabBtn-layout" aria-controls="tab-layout" aria-selected="true" type="button">Layout</button>
+    <button class="tab" role="tab" id="tabBtn-layout" aria-controls="tab-layout" aria-selected="true" type="button">Free cut</button>
+    <button class="tab" role="tab" id="tabBtn-guillotine" aria-controls="tab-layout" aria-selected="false" type="button">Guillotine cut</button>
     <button class="tab" role="tab" id="tabBtn-advanced" aria-controls="tab-advanced" aria-selected="false" type="button">Advanced</button>
   </nav>
 
@@ -240,14 +264,14 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
       <div class="field">
         <span class="step"><b>3</b> Boxes to fit</span>
         <div class="boxes">
-          <div class="box-head"><span></span><span>Name</span><span>Width</span><span>Height</span><span title="How many">Count</span><span title="Can turn sideways" aria-label="Can turn sideways">↻</span><span></span></div>
+          <div class="box-head"><span></span><span>Name</span><span>Width</span><span>Height</span><span title="How many">Count</span><span>Rotation</span><span></span></div>
           <div id="boxList" class="boxes"></div>
         </div>
         <div class="row" style="justify-content:space-between">
           <button class="btn small" id="addBox" type="button">+ Add a box</button>
           <span class="hint" id="boxTotal"></span>
         </div>
-        <p class="hint">Tick ↻ if a box can be turned sideways to fit better. Untick it when the grain or print direction matters.</p>
+        <p class="hint"><b>Can turn</b> lets SheetFit rotate a box 90° when that fits better. Click it to switch to <b>Fixed</b> when the grain or print direction matters.</p>
         <div class="err" id="formErr" hidden></div>
       </div>
 
@@ -270,12 +294,14 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
     </aside>
 
     <main id="results">
+      <div class="mode-note" id="modeNote" role="note"></div>
       <section class="stats" id="stats" aria-label="Result summary"></section>
       <div id="warnings"></div>
 
       <section class="panel" aria-labelledby="hSheets">
         <div class="section-head">
           <h2 id="hSheets">Your layout</h2>
+          <label class="hint" id="cutOrderWrap" hidden style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="showCutOrder" checked style="accent-color:var(--accent)"> Number the cuts</label>
           <p class="hint">Hover or tap a box to see its size and position from the sheet's top-left corner. The hatched area on each sheet is the biggest leftover piece you can cut off and keep.</p>
         </div>
         <div class="legend" id="typeLegend"></div>
@@ -300,14 +326,14 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
           <div class="field"><label class="hint" for="pBeta">β heuristic weight</label><input type="number" id="pBeta" min="0" max="8" step="0.1"></div>
           <div class="field"><label class="hint" for="pEvap">Evaporation</label><input type="number" id="pEvap" min="0.01" max="0.9" step="0.01"></div>
           <div class="field"><label class="hint" for="pScrap">Scrap penalty</label><input type="number" id="pScrap" min="0" max="10" step="0.5"></div>
-          <label class="field check" for="pCompact"><span class="hint">Slide boxes together</span><span class="row" style="align-items:center;gap:6px"><input type="checkbox" id="pCompact"> <span class="hint">after each sheet</span></span></label>
+          <label class="field check" for="pCompact"><span class="hint">Slide boxes together (free cut)</span><span class="row" style="align-items:center;gap:6px"><input type="checkbox" id="pCompact"> <span class="hint">after each sheet</span></span></label>
         </div>
         <div class="row" style="align-items:center">
           <button class="btn primary" id="runAdv" type="button">Run again</button>
           <button class="btn" id="resetParams" type="button">Reset to defaults</button>
           <span class="hint" id="statusAdv" style="flex:1 1 200px"></span>
         </div>
-        <p class="hint">α = 0 turns learning off, so ants sample from the heuristic alone. Higher β makes them greedier. Evaporation is the share of pheromone lost each round. Scrap penalty sets how hard layouts are pushed to keep leftover in one piece (0 = ignore it). Sliding moves every box up and left once a sheet is full so the leftover gathers in a corner. The same seed always gives the same result.</p>
+        <p class="hint">α = 0 turns learning off, so ants sample from the heuristic alone. Higher β makes them greedier. Evaporation is the share of pheromone lost each round. Scrap penalty sets how hard layouts are pushed to keep leftover in one piece (0 = ignore it). Sliding moves every box up and left once a sheet is full so the leftover gathers in a corner; guillotine cut skips it because it would break the straight cuts. The same seed always gives the same result.</p>
       </section>
 
       <section class="panel" aria-labelledby="hInsight">
@@ -408,7 +434,8 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
     <ol class="help-steps">
       <li><b>Pick your units.</b> Inches, feet, millimetres, centimetres or metres. Fractions work, like <span class="mono">23 1/4</span>. You can also type a unit after any number, like <span class="mono">600mm</span>.</li>
       <li><b>Enter your sheet size.</b> If you're cutting, set the gap to your saw blade's width so every box comes out full size.</li>
-      <li><b>List your boxes.</b> Give each size a name, its width and height, and how many you need. Tick ↻ if it can be turned sideways.</li>
+      <li><b>List your boxes.</b> Give each size a name, its width and height, and how many you need. Set <b>Rotation</b> to <i>Can turn</i> or <i>Fixed</i>.</li>
+      <li><b>Pick how you'll cut.</b> <i>Free cut</i> (the default) lets boxes go anywhere, for laser, CNC or plotter cutters. <i>Guillotine cut</i> only uses straight cuts that run edge to edge, for guillotine cutters, panel saws and table saws.</li>
       <li><b>Press Find best layout.</b> You'll see each sheet with every box drawn in place. The hatched area is the leftover piece you can cut off and keep.</li>
     </ol>
     <p class="hint">Not sure where to start? Pick one of the examples under the button. Curious how the layout was chosen? The Advanced tab shows the algorithm's work step by step.</p>
@@ -473,6 +500,8 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
     items: [],
     params: { ants: 20, iterations: 80, seed: 7, alpha: 1, beta: 2, evaporation: 0.1, scrapWeight: 2, compact: true },
     result: null,
+    results: { free: null, guillotine: null },
+    mode: 'free',
     live: null,
     running: false,
   };
@@ -560,7 +589,7 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
         <input type="text" id="bw${it.id}" aria-label="Box width" inputmode="decimal">
         <input type="text" id="bh${it.id}" aria-label="Box height" inputmode="decimal">
         <input type="number" id="bq${it.id}" aria-label="Quantity" min="0" max="999" step="1">
-        <input type="checkbox" id="br${it.id}" aria-label="Allow rotation">
+        <button type="button" class="rot-toggle" id="br${it.id}"></button>
         <button class="btn ghost small" type="button" aria-label="Remove box">✕</button>`;
       list.appendChild(row);
       const [, lab, w, h, q, rot, del] = row.children;
@@ -569,7 +598,14 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
       bindLen(h, () => it.h, (v) => (it.h = v));
       q.value = it.qty;
       q.onchange = () => { const v = Math.floor(+q.value); const ok = v >= 0 && v <= 999; q.classList.toggle('bad', !ok); if (ok) it.qty = v; validate(); };
-      rot.checked = it.rotate; rot.onchange = () => { it.rotate = rot.checked; };
+      const paintRot = () => {
+        rot.setAttribute('aria-pressed', String(it.rotate));
+        rot.textContent = it.rotate ? '↻ Can turn' : 'Fixed';
+        rot.title = it.rotate ? 'This box may be rotated 90°. Click to keep it fixed.' : 'This box stays as entered. Click to allow rotating it.';
+        rot.setAttribute('aria-label', `Rotation for ${it.label || 'box'}: ${it.rotate ? 'can turn' : 'fixed'}`);
+      };
+      paintRot();
+      rot.onclick = () => { it.rotate = !it.rotate; paintRot(); };
       del.onclick = () => { state.items.splice(i, 1); renderForm(); };
     });
     const P = state.params;
@@ -633,6 +669,19 @@ onmessage = (e) => {
     return w;
   }
 
+  function jobInput() {
+    return {
+      sheetW: state.sheetW, sheetH: state.sheetH, kerf: state.kerf,
+      items: state.items.map((it) => ({ w: it.w, h: it.h, qty: it.qty, rotate: it.rotate, label: it.label || 'Box' })),
+      params: { ...state.params, cutMode: state.mode },
+    };
+  }
+  // same job and settings, ignoring which cut mode
+  function jobSig(input) {
+    const { cutMode, ...rest } = input.params;
+    return JSON.stringify([input.sheetW, input.sheetH, input.kerf, input.items, rest]);
+  }
+
   function run(opts = {}) {
     readParams();
     if (!validate()) return;
@@ -641,11 +690,8 @@ onmessage = (e) => {
     state.running = true;
     state.live = { history: [], best: null };
     const snapshotUnit = state.unit;
-    const input = {
-      sheetW: state.sheetW, sheetH: state.sheetH, kerf: state.kerf,
-      items: state.items.map((it) => ({ w: it.w, h: it.h, qty: it.qty, rotate: it.rotate, label: it.label || 'Box' })),
-      params: { ...state.params },
-    };
+    const mode = state.mode;
+    const input = jobInput();
     const labels = state.items.map((it) => it.label || 'Box');
     $('run').textContent = 'Working…';
     $('runAdv').disabled = true;
@@ -664,7 +710,9 @@ onmessage = (e) => {
       } else if (m.type === 'done') {
         cancelAnimationFrame(raf);
         state.running = false;
-        state.result = { ...m.res, input, labels, ms: performance.now() - t0 };
+        const result = { ...m.res, input, labels, ms: performance.now() - t0, sig: jobSig(input), mode };
+        state.results[mode] = result;
+        state.result = result;
         $('run').textContent = 'Find best layout';
         $('runAdv').disabled = false;
         $('prog').style.width = '100%';
@@ -755,6 +803,24 @@ onmessage = (e) => {
         }
       }
     });
+    if (opts.cuts && opts.cuts.length) {
+      const cg = svgEl('g', { 'pointer-events': 'none' }, svg);
+      const cw = Math.max(W, H) * 0.0035;
+      opts.cuts.forEach((c, i) => {
+        svgEl('line', { x1: c.x1, y1: c.y1, x2: c.x2, y2: c.y2, stroke: 'var(--cut)', 'stroke-width': cw, 'stroke-dasharray': `${cw * 4} ${cw * 2.5}`, 'stroke-linecap': 'round' }, cg);
+      });
+      if (opts.cutOrder) {
+        const r = Math.max(W, H) * 0.014;
+        opts.cuts.forEach((c, i) => {
+          const len = Math.hypot(c.x2 - c.x1, c.y2 - c.y1);
+          if (len < r * 3) return;
+          const mx = (c.x1 + c.x2) / 2, my = (c.y1 + c.y2) / 2;
+          svgEl('circle', { cx: mx, cy: my, r, fill: 'var(--cut)', stroke: 'var(--sheet)', 'stroke-width': r * 0.18 }, cg);
+          const t = svgEl('text', { x: mx, y: my, 'font-size': r * (i + 1 >= 10 ? 1.0 : 1.25), 'font-weight': 700, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: '#fff' }, cg);
+          t.textContent = String(i + 1);
+        });
+      }
+    }
     if (opts.highlight) {
       const p = opts.highlight;
       svgEl('rect', { x: p.x, y: p.y, width: p.w, height: p.h, fill: 'none', stroke: 'var(--mark)', 'stroke-width': sw * 3.5 }, svg);
@@ -847,12 +913,32 @@ onmessage = (e) => {
       <div class="stat"><span class="label">Reusable offcuts</span><b class="num">${(offFrac * 100).toFixed(0)}%</b><span class="d">leftover kept in one piece per sheet</span></div>
       <div class="stat"><span class="label">Boxes placed</span><b class="num">${placed}<span class="muted" style="font-size:18px"> / ${want}</span></b><span class="d">${want - placed ? `${want - placed} too big for the sheet` : 'all of them fit'}</span></div>
       <div class="stat"><span class="label">Scrap</span><b class="num">${(scrapFrac * 100).toFixed(0)}%</b><span class="d">small gaps between boxes</span></div>`;
-    if (!live) renderAdvSummary(res, lift, dSheets);
+    if (res.mode === 'guillotine' || state.mode === 'guillotine') {
+      const cuts = best.sheets.reduce((a, sh) => a + (sh.cuts ? sh.cuts.length : 0), 0);
+      el.insertAdjacentHTML('beforeend', `<div class="stat"><span class="label">Cuts</span><b class="num">${cuts}</b><span class="d">straight, edge to edge</span></div>`);
+    }
+    if (!live) { renderAdvSummary(res, lift, dSheets); renderModeNote(); }
+  }
+
+  function renderModeNote() {
+    const g = state.mode === 'guillotine';
+    const other = state.results[g ? 'free' : 'guillotine'];
+    const mine = state.result && state.result.mode === state.mode ? state.result : null;
+    let cmp = '';
+    if (mine && other && other.sig === mine.sig) {
+      const a = mine.best.sheets.length, b = other.best.sheets.length;
+      cmp = g
+        ? (a > b ? ` Free cut fits this job on ${b} sheet${b === 1 ? '' : 's'}; guillotine needs ${a - b} more.` : ` Same number of sheets as free cut (${b}).`)
+        : (b > a ? ` Guillotine cut would need ${b - a} more sheet${b - a === 1 ? '' : 's'}.` : ` Guillotine cut fits this job on the same ${b} sheet${b === 1 ? '' : 's'}.`);
+    }
+    $('modeNote').innerHTML = g
+      ? `<span><b>Guillotine cut.</b> Every cut runs straight across the piece from edge to edge, so a guillotine cutter, panel saw or table saw can make it. Dashed lines are the cuts, numbered in order. This can take a little more material.<span class="cmp">${cmp}</span></span>`
+      : `<span><b>Free cut.</b> Boxes can go anywhere on the sheet. Best for laser, CNC router or plotter cutting.<span class="cmp">${cmp}</span></span>`;
   }
 
   function renderAdvSummary(res, lift, dSheets) {
     const P = res.params;
-    $('advSummary').innerHTML = `Last run: ${P.ants} ants × ${P.iterations} rounds = ${(P.ants * P.iterations).toLocaleString()} layouts in ${(res.ms / 1000).toFixed(1)} s. ` +
+    $('advSummary').innerHTML = `Showing the <b>${res.mode === 'guillotine' ? 'guillotine' : 'free'} cut</b> run. Last run: ${P.ants} ants × ${P.iterations} rounds = ${(P.ants * P.iterations).toLocaleString()} layouts in ${(res.ms / 1000).toFixed(1)} s. ` +
       `Compared with a simple greedy layout, the colony scored <b class="${lift > 0.05 ? 'good' : ''}">${lift >= 0 ? '+' : ''}${lift.toFixed(1)}%</b>${dSheets > 0 ? ` and saved ${dSheets} sheet${dSheets > 1 ? 's' : ''}` : ''}.`;
   }
 
@@ -877,10 +963,10 @@ onmessage = (e) => {
       const card = document.createElement('div');
       card.className = 'sheet-card';
       const parts = sh.parts.map((p) => ({ ...p, item: types[p.t].item, t: types[p.t].item }));
-      card.appendChild(drawSheet(res.ctx.sheetW, res.ctx.sheetH, parts, res.labels, { maxH: Math.round(Math.min(900, Math.max(520, innerHeight * 0.85))), offcut: sh.offcutRect }));
+      card.appendChild(drawSheet(res.ctx.sheetW, res.ctx.sheetH, parts, res.labels, { maxH: Math.round(Math.min(900, Math.max(520, innerHeight * 0.85))), offcut: sh.offcutRect, cuts: sh.cuts, cutOrder: $('showCutOrder').checked }));
       const cap = document.createElement('div');
       cap.className = 'cap';
-      cap.innerHTML = `<span><b>Sheet ${i + 1}</b> · ${sh.parts.length} box${sh.parts.length === 1 ? '' : 'es'}</span><span class="mono muted">${(best.fills[i] * 100).toFixed(0)}% used</span>`;
+      cap.innerHTML = `<span><b>Sheet ${i + 1}</b> · ${sh.parts.length} box${sh.parts.length === 1 ? '' : 'es'}${sh.cuts ? ` · ${sh.cuts.length} cuts` : ''}</span><span class="mono muted">${(best.fills[i] * 100).toFixed(0)}% used</span>`;
       card.appendChild(cap);
       const counts = new Map();
       for (const p of parts) counts.set(p.item, (counts.get(p.item) || 0) + 1);
@@ -901,7 +987,7 @@ onmessage = (e) => {
 
   function renderLegend(res) {
     const el = $('typeLegend');
-    el.innerHTML = '<span><span class="offcut-sw"></span>Reusable offcut</span>' + res.ctx.types.map((t) => `<span><span class="sw" style="display:inline-block;vertical-align:-1px;margin-right:5px;background:${colorVar(t.item)}"></span>${esc(t.label || 'Box')} <span class="mono">${fmtLen(t.w, state.unit)}×${fmtLen(t.h, state.unit)}</span> ×${t.qty}</span>`).join('');
+    el.innerHTML = (res.mode === 'guillotine' ? '<span><span class="cut-sw"></span>Cut line</span>' : '') + '<span><span class="offcut-sw"></span>Reusable offcut</span>' + res.ctx.types.map((t) => `<span><span class="sw" style="display:inline-block;vertical-align:-1px;margin-right:5px;background:${colorVar(t.item)}"></span>${esc(t.label || 'Box')} <span class="mono">${fmtLen(t.w, state.unit)}×${fmtLen(t.h, state.unit)}</span> ×${t.qty}</span>`).join('');
   }
 
   function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
@@ -1064,17 +1150,32 @@ onmessage = (e) => {
   }).observe($('convChart'));
 
   // ---------- tabs ----------
-  const TABS = ['layout', 'advanced'];
+  const TABS = ['layout', 'guillotine', 'advanced'];
+  function setMode(mode) {
+    const changed = state.mode !== mode;
+    state.mode = mode;
+    $('cutOrderWrap').hidden = mode !== 'guillotine';
+    const cached = state.results[mode];
+    if (cached && cached.sig === jobSig(jobInput())) {
+      state.result = cached;
+      renderResult();
+    } else if (changed || !state.result) {
+      run();
+    }
+    renderModeNote();
+  }
   function showTab(name, focus) {
     if (!TABS.includes(name)) name = 'layout';
     for (const t of TABS) {
       const on = t === name;
-      $('tab-' + t).hidden = !on;
       const b = $('tabBtn-' + t);
       b.setAttribute('aria-selected', String(on));
       b.tabIndex = on ? 0 : -1;
     }
+    $('tab-layout').hidden = name === 'advanced';
+    $('tab-advanced').hidden = name !== 'advanced';
     if (focus) $('tabBtn-' + name).focus();
+    if (name !== 'advanced') setMode(name === 'guillotine' ? 'guillotine' : 'free');
     if (name === 'advanced' && state.result && !state.running) {
       const r = state.result;
       renderConv(r.history, r.greedy.fitness, r.params.iterations, r.restarts, r.bestIter);
@@ -1091,8 +1192,8 @@ onmessage = (e) => {
       showTab(next, true);
     };
   }
+  $('showCutOrder').onchange = () => { if (state.result) renderSheets(state.result, state.result.best); };
   addEventListener('hashchange', () => showTab(location.hash.slice(1)));
-  showTab(location.hash.slice(1));
 
   // ---------- how-to dialog ----------
   const help = $('help');
@@ -1104,7 +1205,7 @@ onmessage = (e) => {
   if (!seen) help.showModal();
 
   loadPreset('cabinet');
-  run();
+  showTab(location.hash.slice(1)); // starts the first run in the right cut mode
 })();
 </script>
 </body>

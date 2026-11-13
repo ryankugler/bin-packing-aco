@@ -19,6 +19,10 @@
  *    plus a small bonus for a large offcut on the last sheet. scrap_i is the leftover on
  *    sheet i that is NOT part of its biggest empty rectangle, i.e. scattered pieces that
  *    are hard to reuse. Rewards fewer, fuller sheets with leftovers kept in one piece.
+ *  - Guillotine mode (cutMode: 'guillotine'): free rects never overlap and every placement
+ *    splits its free rect with straight edge-to-edge cuts, so the result can be cut on a
+ *    guillotine or panel saw. Ants also choose each split's direction; a second pheromone
+ *    (per box type and direction) learns which direction works. Sliding is skipped there.
  *  - Update: MAX-MIN Ant System. Evaporate everything, only the iteration best (or the
  *    global best every 5th iteration) deposits, and tau is clamped to [tauMin, tauMax].
  *    If nothing improves for a while, pheromone is reset to tauMax (restart).
@@ -37,13 +41,14 @@ function ACOSolverModule() {
 
   // ---------- MaxRects sheet ----------
   function newSheet(W, H) {
-    return { W, H, free: [{ x: 0, y: 0, w: W, h: H }], parts: [] };
+    return { W, H, free: [{ x: 0, y: 0, w: W, h: H }], parts: [], cuts: [] };
   }
 
   // Best-Short-Side-Fit for a w x h rectangle. Ties: long side, then top-most, then left-most.
   function fitBSSF(sheet, w, h) {
     let best = null;
-    for (const f of sheet.free) {
+    for (let i = 0; i < sheet.free.length; i++) {
+      const f = sheet.free[i];
       if (w > f.w + EPS || h > f.h + EPS) continue;
       const lw = f.w - w, lh = f.h - h;
       const s1 = Math.min(lw, lh), s2 = Math.max(lw, lh);
@@ -55,7 +60,7 @@ function ACOSolverModule() {
             (Math.abs(s2 - best.s2) <= EPS &&
               (f.y < best.y - EPS || (Math.abs(f.y - best.y) <= EPS && f.x < best.x - EPS)))))
       ) {
-        best = { x: f.x, y: f.y, w, h, s1, s2, freeArea: f.w * f.h };
+        best = { x: f.x, y: f.y, w, h, s1, s2, freeArea: f.w * f.h, fi: i };
       }
     }
     return best;
@@ -91,6 +96,54 @@ function ACOSolverModule() {
       if (!contained) keep.push(a);
     }
     sheet.free = keep;
+  }
+
+  /*
+   * Guillotine placement. Free rects never overlap. The box goes in the top-left corner of
+   * free rect f, and the rest of f is split by one straight cut across f and a second cut
+   * across the strip holding the box. Every cut runs edge to edge through the piece it
+   * divides, so the whole sheet can be cut on a guillotine, panel saw or table saw.
+   * Cuts are recorded in order; that order is a valid cutting sequence.
+   */
+  function placeGuillotine(ctx, sheet, p, rng) {
+    const f = sheet.free[p.fi];
+    sheet.free.splice(p.fi, 1);
+    const { w, h } = p;
+    const lw = f.w - w, lh = f.h - h;
+    // A: cut across the full width first. B: cut down the full height first.
+    const A = [{ x: f.x, y: f.y + h, w: f.w, h: lh }, { x: f.x + w, y: f.y, w: lw, h }];
+    const B = [{ x: f.x + w, y: f.y, w: lw, h: f.h }, { x: f.x, y: f.y + h, w, h: lh }];
+    const area = (r) => (r.w > EPS && r.h > EPS ? r.w * r.h : 0);
+    let horizFirst;
+    switch (ctx.P.splitRule) {
+      case 'shorter': horizFirst = lw < lh; break;
+      case 'longer': horizFirst = lw >= lh; break;
+      case 'maxarea': horizFirst = Math.max(area(A[0]), area(A[1])) >= Math.max(area(B[0]), area(B[1])); break;
+      default: horizFirst = Math.max(area(A[0]), area(A[1])) <= Math.max(area(B[0]), area(B[1])); // 'minarea'
+    }
+    // ants choose the cut direction: the split rule's pick is favoured, pheromone learns per box type
+    if (rng && ctx.splitTau) {
+      // pheromone per (box type, direction): [cut-across-first, cut-down-first]
+      const tH = ctx.splitTau[2 * p.t], tV = ctx.splitTau[2 * p.t + 1];
+      const wH = tH * (horizFirst ? 1 : ctx.P.splitBias), wV = tV * (horizFirst ? ctx.P.splitBias : 1);
+      horizFirst = rng() * (wH + wV) < wH;
+    }
+    if (p.splitLog) p.splitLog.push(2 * p.t + (horizFirst ? 0 : 1));
+    const pieces = horizFirst ? A : B;
+    for (const r of pieces) if (r.w > EPS && r.h > EPS) sheet.free.push(r);
+    // record cut lines in real coordinates (middle of the kerf), clipped to the sheet
+    const k = ctx.kerf, SW = ctx.sheetW, SH = ctx.sheetH;
+    const clipX = (v) => Math.max(0, Math.min(SW, v)), clipY = (v) => Math.max(0, Math.min(SH, v));
+    const hcut = (y, x1, x2) => sheet.cuts.push({ x1: clipX(x1), y1: clipY(y), x2: clipX(x2), y2: clipY(y) });
+    const vcut = (x, y1, y2) => sheet.cuts.push({ x1: clipX(x), y1: clipY(y1), x2: clipX(x), y2: clipY(y2) });
+    const cy = f.y + h - k / 2, cx = f.x + w - k / 2;
+    if (horizFirst) {
+      if (lh > EPS && cy < SH - EPS) hcut(cy, f.x - k / 2, f.x + f.w - k / 2);
+      if (lw > EPS && cx < SW - EPS) vcut(cx, f.y - k / 2, f.y + h - k / 2);
+    } else {
+      if (lw > EPS && cx < SW - EPS) vcut(cx, f.y - k / 2, f.y + f.h - k / 2);
+      if (lh > EPS && cy < SH - EPS) hcut(cy, f.x - k / 2, f.x + w - k / 2);
+    }
   }
 
   function largestFree(sheet) {
@@ -222,12 +275,14 @@ function ACOSolverModule() {
    */
   function construct(ctx, tau, P, rng, mode, trace) {
     const nT = ctx.nT;
+    const guillotine = P.cutMode === 'guillotine';
     const cnt = ctx.types.map((t) => t.qty);
     let left = ctx.total;
     const sheets = [];
     let cur = newSheet(ctx.W, ctx.H);
     let prev = nT;
     const transitions = [];
+    const splits = [];
     const steps = trace ? [] : null;
     let entropySum = 0, decisions = 0;
 
@@ -246,7 +301,7 @@ function ACOSolverModule() {
         sumW += w;
       }
       if (!cands.length) {
-        sheets.push(P.compact ? compact(ctx, cur) : cur);
+        sheets.push(P.compact && !guillotine ? compact(ctx, cur) : cur);
         cur = newSheet(ctx.W, ctx.H);
         prev = nT;
         continue;
@@ -270,7 +325,8 @@ function ACOSolverModule() {
 
       const c = cands[pick];
       const ty = ctx.types[c.t];
-      placeRect(cur, c.p.x, c.p.y, c.p.w, c.p.h);
+      if (guillotine) { c.p.t = c.t; c.p.splitLog = splits; placeGuillotine(ctx, cur, c.p, mode === 'greedy' ? null : rng); }
+      else placeRect(cur, c.p.x, c.p.y, c.p.w, c.p.h);
       const part = { t: c.t, x: c.p.x, y: c.p.y, w: c.p.rot ? ty.h : ty.w, h: c.p.rot ? ty.w : ty.h, rot: c.p.rot };
       cur.parts.push(part);
 
@@ -289,19 +345,20 @@ function ACOSolverModule() {
       left--;
       prev = c.t;
     }
-    if (cur.parts.length) sheets.push(P.compact ? compact(ctx, cur) : cur);
+    if (cur.parts.length) sheets.push(P.compact && !guillotine ? compact(ctx, cur) : cur);
 
     const ev = evaluate(ctx, sheets);
     return {
-      sheets: sheets.map((s) => ({ parts: s.parts, offcut: largestFree(s), offcutRect: offcutRect(ctx, s) })),
+      sheets: sheets.map((s) => ({ parts: s.parts, offcut: largestFree(s), offcutRect: offcutRect(ctx, s), cuts: guillotine ? s.cuts : null })),
       transitions,
+      splits,
       ...ev,
       entropy: decisions ? entropySum / decisions : 0,
       steps,
     };
   }
 
-  const DEFAULTS = { ants: 20, iterations: 80, alpha: 1, beta: 2, evaporation: 0.1, seed: 7, restartAfter: 25, tauSpread: 2, scrapWeight: 2, compact: true };
+  const DEFAULTS = { ants: 20, iterations: 80, alpha: 1, beta: 2, evaporation: 0.1, seed: 7, restartAfter: 25, tauSpread: 2, scrapWeight: 2, compact: true, cutMode: 'free', splitRule: 'minarea', learnSplit: true, splitBias: 0.6 };
 
   function solve(input, onProgress) {
     const P = Object.assign({}, DEFAULTS, input.params || {});
@@ -320,6 +377,9 @@ function ACOSolverModule() {
     let tauMin = tauMax / (P.tauSpread * nT + 2);
     const size = (nT + 1) * nT;
     let tau = new Float64Array(size).fill(tauMax);
+    const learnSplit = P.cutMode === 'guillotine' && P.learnSplit;
+    if (learnSplit) ctx.splitTau = new Float64Array(2 * nT).fill(tauMax);
+    let bestSplitTau = null;
 
     let best = greedy, bestSeed = null, bestTau = null, bestIter = 0, lastImprove = 0;
     const history = [];
@@ -337,6 +397,7 @@ function ACOSolverModule() {
         if (!iterBest || sol.fitness > iterBest.fitness) iterBest = sol;
         if (sol.fitness > best.fitness + 1e-12) {
           best = sol; bestSeed = seed; bestTau = Float64Array.from(tau); bestIter = it; lastImprove = it;
+          if (learnSplit) bestSplitTau = Float64Array.from(ctx.splitTau);
           tauMax = best.fitness / P.evaporation;
           tauMin = tauMax / (P.tauSpread * nT + 2);
         }
@@ -349,10 +410,17 @@ function ACOSolverModule() {
       const seen = new Set(depositor.transitions);
       for (const idx of seen) tau[idx] += depositor.fitness;
       for (let i = 0; i < size; i++) tau[i] = Math.min(tauMax, Math.max(tauMin, tau[i]));
+      if (learnSplit) {
+        const st = ctx.splitTau;
+        for (let i = 0; i < st.length; i++) st[i] *= rho;
+        for (const idx of new Set(depositor.splits)) st[idx] += depositor.fitness;
+        for (let i = 0; i < st.length; i++) st[i] = Math.min(tauMax, Math.max(tauMin, st[i]));
+      }
 
       let restarted = false;
       if (it - lastImprove >= P.restartAfter && it < P.iterations) {
         tau.fill(tauMax);
+        if (learnSplit) ctx.splitTau.fill(tauMax);
         lastImprove = it;
         restarts.push(it);
         restarted = true;
@@ -378,6 +446,7 @@ function ACOSolverModule() {
     let trace = [];
     let replayMatches = true;
     if (bestSeed !== null) {
+      if (learnSplit) ctx.splitTau = bestSplitTau;
       const replay = construct(ctx, bestTau, P, mulberry32(bestSeed), 'aco', true);
       trace = replay.steps;
       replayMatches = JSON.stringify(replay.sheets.map((s) => s.parts)) === JSON.stringify(best.sheets.map((s) => s.parts));

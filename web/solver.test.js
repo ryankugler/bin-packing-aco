@@ -2,6 +2,19 @@
 const assert = require('assert');
 const M = require('./solver.js')();
 
+// True if the rects can be separated by recursive straight cuts that run edge to edge.
+function isGuillotine(rects) {
+  if (rects.length <= 1) return true;
+  for (const [axis, size] of [['x', 'w'], ['y', 'h']]) {
+    for (const c of new Set(rects.map((r) => r[axis] + r[size]))) {
+      if (rects.some((r) => r[axis] < c - 1e-7 && r[axis] + r[size] > c + 1e-7)) continue;
+      const a = rects.filter((r) => r[axis] + r[size] <= c + 1e-7), b = rects.filter((r) => r[axis] >= c - 1e-7);
+      if (a.length && b.length) return isGuillotine(a) && isGuillotine(b);
+    }
+  }
+  return false;
+}
+
 function check(input, res) {
   const k = input.kerf || 0, W = input.sheetW, H = input.sheetH;
   let n = 0;
@@ -26,6 +39,23 @@ function check(input, res) {
     for (const p of s.parts) assert(o.x + o.w + k <= p.x + 1e-6 || p.x + p.w + k <= o.x + 1e-6 || o.y + o.h + k <= p.y + 1e-6 || p.y + p.h + k <= o.y + 1e-6, 'offcut overlaps a box');
   }
   assert(res.best.fitness >= res.greedy.fitness, 'never worse than greedy');
+  if (input.params && input.params.cutMode === 'guillotine') {
+    for (const s of res.best.sheets) {
+      assert(isGuillotine(s.parts.map((p) => ({ x: p.x, y: p.y, w: p.w + k, h: p.h + k }))), 'layout can be cut with edge-to-edge cuts');
+      assert(Array.isArray(s.cuts), 'cuts are reported');
+      for (const c of s.cuts) {
+        assert(c.x1 === c.x2 || c.y1 === c.y2, 'cuts are straight');
+        assert(Math.min(c.x1, c.x2) > -1e-6 && Math.max(c.x1, c.x2) < W + 1e-6 && Math.min(c.y1, c.y2) > -1e-6 && Math.max(c.y1, c.y2) < H + 1e-6, 'cuts stay on the sheet');
+        for (const p of s.parts) {
+          // a cut line must never pass through the inside of a box
+          if (c.y1 === c.y2) assert(!(c.y1 > p.y + 1e-6 && c.y1 < p.y + p.h - 1e-6 && Math.max(c.x1, c.x2) > p.x + 1e-6 && Math.min(c.x1, c.x2) < p.x + p.w - 1e-6), 'cut crosses a box');
+          else assert(!(c.x1 > p.x + 1e-6 && c.x1 < p.x + p.w - 1e-6 && Math.max(c.y1, c.y2) > p.y + 1e-6 && Math.min(c.y1, c.y2) < p.y + p.h - 1e-6), 'cut crosses a box');
+        }
+      }
+    }
+  } else {
+    assert(res.best.sheets.every((s) => s.cuts === null), 'free mode reports no cuts');
+  }
 }
 
 const rng = M.mulberry32(42), ri = (a, b) => a + Math.floor(rng() * (b - a + 1));
@@ -34,8 +64,9 @@ const cases = {
   'random multi-sheet': { sheetW: 100, sheetH: 60, kerf: 0.3, items: Array.from({ length: 10 }, () => ({ w: ri(5, 40), h: ri(5, 40), qty: ri(1, 12), rotate: rng() < 0.7 })) },
   'single type': { sheetW: 10, sheetH: 10, kerf: 0, items: [{ w: 3, h: 2, qty: 30, rotate: true }] },
 };
-for (const [name, input] of Object.entries(cases)) {
-  const res = M.solve({ ...input, params: { iterations: 30 } });
+for (const [name, base] of Object.entries(cases)) for (const cutMode of ['free', 'guillotine']) {
+  const input = { ...base, params: { iterations: 30, cutMode } };
+  const res = M.solve(input);
   check(input, res);
-  console.log(`ok  ${name}: ${res.best.sheets.length} sheet(s), ${(res.best.utilization * 100).toFixed(1)}% used (greedy score ${res.greedy.fitness.toFixed(4)} -> ACO ${res.best.fitness.toFixed(4)})`);
+  console.log(`ok  ${name} [${cutMode}]: ${res.best.sheets.length} sheet(s), ${(res.best.utilization * 100).toFixed(1)}% used (greedy score ${res.greedy.fitness.toFixed(4)} -> ACO ${res.best.fitness.toFixed(4)})`);
 }
