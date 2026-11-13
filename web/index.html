@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Antcut Sheet Packer</title>
+<title>SheetFit</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -108,7 +108,7 @@ button { font: inherit; }
 .btn.ghost:hover { color: var(--warn); }
 
 .boxes { display: grid; gap: 6px; }
-.box-head, .box-row { display: grid; grid-template-columns: 12px minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr) 44px 22px 22px; gap: 5px; align-items: center; }
+.box-head, .box-row { display: grid; grid-template-columns: 12px minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr) 50px 22px 22px; gap: 5px; align-items: center; }
 .box-head { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; }
 .box-row input { padding: 5px 6px; font-size: 13px; }
 .box-row input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); margin: 0 auto; }
@@ -174,6 +174,23 @@ svg text { font-family: var(--f-mono); }
 .method b { color: var(--ink); font-weight: 600; }
 .empty { padding: 32px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: var(--r); }
 
+/* tabs, steps, help dialog */
+.top-right { display: flex; align-items: end; gap: 16px; flex-wrap: wrap; justify-content: flex-end; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-top: -6px; }
+.tab { border: 0; background: transparent; padding: 8px 16px; font: 600 18px var(--f-display); letter-spacing: .02em; color: var(--muted); cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -1px; }
+.tab:hover { color: var(--ink); }
+.tab[aria-selected=true] { color: var(--ink); border-bottom-color: var(--accent); }
+.tab:focus-visible { outline: 2px solid var(--mark); outline-offset: -2px; }
+.step { display: flex; align-items: center; gap: 8px; font: 600 17px var(--f-display); letter-spacing: .02em; }
+.step b { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--ink); color: var(--panel); font: 600 13px var(--f-mono); }
+.sheet-card .contents { font-size: 12px; color: var(--muted); }
+dialog#help { border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); color: var(--ink); padding: 0; width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
+dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
+.help-inner { display: grid; gap: 14px; padding: 20px; }
+.help-steps { margin: 0; padding-left: 22px; display: grid; gap: 10px; }
+.help-steps li { padding-left: 4px; max-width: 60ch; }
+.help-steps li::marker { font: 600 15px var(--f-display); color: var(--accent); }
+
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
@@ -181,91 +198,118 @@ svg text { font-family: var(--f-mono); }
 <div class="wrap">
   <header class="top">
     <div style="display:grid;gap:4px">
-      <span class="label">Ant colony optimization · 2D sheet nesting</span>
-      <h1>Antcut</h1>
+      <span class="label">Sheet cutting planner</span>
+      <h1>SheetFit</h1>
     </div>
-    <p class="tag">Lay out rectangular parts on stock sheets. A colony of simulated ants tries orderings, shares what worked through pheromone, and keeps the layout that uses the fewest, fullest sheets.</p>
+    <div class="top-right">
+      <p class="tag">Enter your sheet size and the boxes you need. SheetFit finds a layout that uses as few sheets as possible.</p>
+      <button class="btn" id="openHelp" type="button">How to use</button>
+    </div>
   </header>
   <div class="ruler" aria-hidden="true"></div>
 
+  <nav class="tabs" role="tablist" aria-label="Views">
+    <button class="tab" role="tab" id="tabBtn-layout" aria-controls="tab-layout" aria-selected="true" type="button">Layout</button>
+    <button class="tab" role="tab" id="tabBtn-advanced" aria-controls="tab-advanced" aria-selected="false" type="button">Advanced</button>
+  </nav>
+
+  <section id="tab-layout" role="tabpanel" aria-labelledby="tabBtn-layout">
   <div class="layout">
     <aside class="panel" aria-label="Job setup">
       <div class="field">
-        <span class="label">Units</span>
+        <span class="step"><b>1</b> Units</span>
         <div class="seg" id="units" role="group" aria-label="Units"></div>
-      </div>
-
-      <div class="field">
-        <span class="label">Example jobs</span>
-        <select id="preset" aria-label="Load an example job">
-          <option value="">Load an example…</option>
-          <option value="cabinet">Base cabinet parts · 4×8 ft plywood</option>
-          <option value="pallet">Carton footprints · EUR pallet</option>
-          <option value="acrylic">Sign blanks · 1220×2440 mm acrylic</option>
-          <option value="original">Original repo demo · 65 random squares</option>
-        </select>
-      </div>
-
-      <div class="field">
-        <span class="label">Sheet</span>
-        <div class="row">
-          <div class="field"><label class="hint" for="sheetW">Width</label><input type="text" id="sheetW" inputmode="decimal"></div>
-          <span class="times">×</span>
-          <div class="field"><label class="hint" for="sheetH">Height</label><input type="text" id="sheetH" inputmode="decimal"></div>
-          <div class="field" style="flex:0 0 84px"><label class="hint" for="kerf">Kerf / gap</label><input type="text" id="kerf" inputmode="decimal"></div>
-        </div>
         <span class="hint" id="unitHint"></span>
       </div>
 
       <div class="field">
-        <span class="label">Boxes</span>
+        <span class="step"><b>2</b> Sheet size</span>
+        <div class="row">
+          <div class="field"><label class="hint" for="sheetW">Width</label><input type="text" id="sheetW" inputmode="decimal"></div>
+          <span class="times">×</span>
+          <div class="field"><label class="hint" for="sheetH">Height</label><input type="text" id="sheetH" inputmode="decimal"></div>
+        </div>
+        <div class="row">
+          <div class="field" style="flex:0 0 110px"><label class="hint" for="kerf">Gap between boxes</label><input type="text" id="kerf" inputmode="decimal"></div>
+          <span class="hint" style="flex:1 1 140px;padding-bottom:4px">Your saw blade's width. Use 0 if you're not cutting.</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="step"><b>3</b> Boxes to fit</span>
         <div class="boxes">
-          <div class="box-head"><span></span><span>Name</span><span>W</span><span>H</span><span>Qty</span><span title="Allow rotation">Rot</span><span></span></div>
+          <div class="box-head"><span></span><span>Name</span><span>Width</span><span>Height</span><span title="How many">Count</span><span title="Can turn sideways" aria-label="Can turn sideways">↻</span><span></span></div>
           <div id="boxList" class="boxes"></div>
         </div>
         <div class="row" style="justify-content:space-between">
-          <button class="btn small" id="addBox" type="button">+ Add box</button>
+          <button class="btn small" id="addBox" type="button">+ Add a box</button>
           <span class="hint" id="boxTotal"></span>
         </div>
+        <p class="hint">Tick ↻ if a box can be turned sideways to fit better. Untick it when the grain or print direction matters.</p>
         <div class="err" id="formErr" hidden></div>
       </div>
 
-      <details>
-        <summary>Colony settings</summary>
-        <div class="params">
-          <div class="field"><label class="hint" for="pAnts">Ants</label><input type="number" id="pAnts" min="1" max="100" step="1"></div>
-          <div class="field"><label class="hint" for="pIters">Iterations</label><input type="number" id="pIters" min="1" max="500" step="1"></div>
-          <div class="field"><label class="hint" for="pSeed">Seed</label><input type="number" id="pSeed" min="0" step="1"></div>
-          <div class="field"><label class="hint" for="pAlpha">α pheromone</label><input type="number" id="pAlpha" min="0" max="5" step="0.1"></div>
-          <div class="field"><label class="hint" for="pBeta">β heuristic</label><input type="number" id="pBeta" min="0" max="8" step="0.1"></div>
-          <div class="field"><label class="hint" for="pEvap">Evaporation</label><input type="number" id="pEvap" min="0.01" max="0.9" step="0.01"></div>
-        </div>
-        <p class="hint" style="margin-top:8px">α = 0 turns learning off, so ants sample from the heuristic alone. Higher β makes them greedier. Evaporation is the share of pheromone lost each iteration.</p>
-      </details>
-
-      <div class="grid" style="display:grid;gap:8px">
-        <button class="btn primary" id="run" type="button">Pack sheets</button>
+      <div style="display:grid;gap:8px">
+        <button class="btn primary" id="run" type="button">Find best layout</button>
         <div class="progress" aria-hidden="true"><i id="prog"></i></div>
-        <span class="hint" id="status">Ready.</span>
+        <span class="hint" id="status" role="status">Ready.</span>
+      </div>
+
+      <div class="field" style="border-top:1px solid var(--line);padding-top:12px">
+        <label class="hint" for="preset">Or start from an example</label>
+        <select id="preset">
+          <option value="">Choose an example…</option>
+          <option value="cabinet">Kitchen cabinet parts on 4×8 ft plywood</option>
+          <option value="pallet">Cartons on a 1200×800 mm pallet</option>
+          <option value="acrylic">Signs on a 1220×2440 mm acrylic sheet</option>
+          <option value="original">65 small random squares</option>
+        </select>
       </div>
     </aside>
 
-    <main>
+    <main id="results">
       <section class="stats" id="stats" aria-label="Result summary"></section>
       <div id="warnings"></div>
 
       <section class="panel" aria-labelledby="hSheets">
         <div class="section-head">
-          <h2 id="hSheets">Cutting layout</h2>
-          <div class="legend" id="typeLegend"></div>
+          <h2 id="hSheets">Your layout</h2>
+          <p class="hint">Hover or tap a box to see its size and position from the sheet's top-left corner.</p>
         </div>
-        <div class="sheets" id="sheets"><div class="empty">Add boxes and press Pack sheets.</div></div>
+        <div class="legend" id="typeLegend"></div>
+        <div class="sheets" id="sheets"><div class="empty">Add your boxes, then press Find best layout.</div></div>
+      </section>
+    </main>
+  </div>
+  </section>
+
+  <section id="tab-advanced" role="tabpanel" aria-labelledby="tabBtn-advanced" hidden>
+    <div style="display:grid;gap:20px">
+      <section class="panel" aria-labelledby="hTuning">
+        <div class="section-head">
+          <h2 id="hTuning">Algorithm settings</h2>
+          <p class="muted" id="advSummary"></p>
+        </div>
+        <div class="params">
+          <div class="field"><label class="hint" for="pAnts">Ants per round</label><input type="number" id="pAnts" min="1" max="100" step="1"></div>
+          <div class="field"><label class="hint" for="pIters">Rounds</label><input type="number" id="pIters" min="1" max="500" step="1"></div>
+          <div class="field"><label class="hint" for="pSeed">Random seed</label><input type="number" id="pSeed" min="0" step="1"></div>
+          <div class="field"><label class="hint" for="pAlpha">α pheromone weight</label><input type="number" id="pAlpha" min="0" max="5" step="0.1"></div>
+          <div class="field"><label class="hint" for="pBeta">β heuristic weight</label><input type="number" id="pBeta" min="0" max="8" step="0.1"></div>
+          <div class="field"><label class="hint" for="pEvap">Evaporation</label><input type="number" id="pEvap" min="0.01" max="0.9" step="0.01"></div>
+        </div>
+        <div class="row" style="align-items:center">
+          <button class="btn primary" id="runAdv" type="button">Run again</button>
+          <button class="btn" id="resetParams" type="button">Reset to defaults</button>
+          <span class="hint" id="statusAdv" style="flex:1 1 200px"></span>
+        </div>
+        <p class="hint">α = 0 turns learning off, so ants sample from the heuristic alone. Higher β makes them greedier. Evaporation is the share of pheromone lost each round. The same seed always gives the same result.</p>
       </section>
 
       <section class="panel" aria-labelledby="hInsight">
         <div class="section-head">
           <h2 id="hInsight">How the colony got there</h2>
-          <p class="muted" id="insightLead">Each iteration, every ant builds a full layout. The best one leaves pheromone on the choices it made, and the next ants lean toward those choices.</p>
+          <p class="muted" id="insightLead">Each round, every ant builds a full layout. The best one leaves pheromone on the choices it made, and the next ants lean toward those choices.</p>
         </div>
 
         <div class="insight-grid">
@@ -273,7 +317,7 @@ svg text { font-family: var(--f-mono); }
             <h3>Convergence</h3>
             <div class="legend">
               <span><i style="border-color:var(--accent)"></i>Best so far</span>
-              <span><i style="border-color:var(--c0)"></i>Best ant this iteration</span>
+              <span><i style="border-color:var(--c0)"></i>Best ant this round</span>
               <span><i style="border-color:var(--muted);border-top-style:dotted"></i>Average ant</span>
               <span><i style="border-color:var(--mark);border-top-style:dashed"></i>Greedy baseline</span>
             </div>
@@ -286,7 +330,7 @@ svg text { font-family: var(--f-mono); }
 
           <div style="display:grid;gap:8px;min-width:0">
             <div class="section-head"><h3>Pheromone map</h3><span class="hint mono" id="heatIt"></span></div>
-            <div class="controls"><label class="hint" for="heatSlider">Iteration</label><input type="range" id="heatSlider" min="0" max="0" value="0"></div>
+            <div class="controls"><label class="hint" for="heatSlider">Round</label><input type="range" id="heatSlider" min="0" max="0" value="0"></div>
             <div class="scroll-x" id="heat"></div>
             <p class="hint">Row = the box just placed (or a fresh sheet). Column = the box placed next. Darker cells are trails the colony reinforced; ants following a dark cell are more likely to repeat that pairing.</p>
           </div>
@@ -330,7 +374,7 @@ svg text { font-family: var(--f-mono); }
             <h3>How the colony learns</h3>
             <ul>
               <li>Pheromone sits on pairs: “after box A, place box B”. Identical boxes share one type, so what one learns applies to all copies.</li>
-              <li>Max-Min Ant System: all trails evaporate, only the iteration's best ant deposits (the all-time best every 5th round), and trails stay between a floor and a cap so no option dies out.</li>
+              <li>Max-Min Ant System: all trails evaporate, only the round's best ant deposits (the all-time best every 5th round), and trails stay between a floor and a cap so no option dies out.</li>
               <li>If 25 rounds pass with no improvement, trails reset to the cap and the search restarts.</li>
             </ul>
           </div>
@@ -346,9 +390,28 @@ svg text { font-family: var(--f-mono); }
           </div>
         </div>
       </section>
-    </main>
-  </div>
+    </div>
+  </section>
 </div>
+
+<dialog id="help" aria-labelledby="helpTitle">
+  <form method="dialog" class="help-inner">
+    <div class="section-head">
+      <h2 id="helpTitle">How to use SheetFit</h2>
+      <button class="btn ghost" value="close" aria-label="Close">✕</button>
+    </div>
+    <ol class="help-steps">
+      <li><b>Pick your units.</b> Inches, feet, millimetres, centimetres or metres. Fractions work, like <span class="mono">23 1/4</span>. You can also type a unit after any number, like <span class="mono">600mm</span>.</li>
+      <li><b>Enter your sheet size.</b> If you're cutting, set the gap to your saw blade's width so every box comes out full size.</li>
+      <li><b>List your boxes.</b> Give each size a name, its width and height, and how many you need. Tick ↻ if it can be turned sideways.</li>
+      <li><b>Press Find best layout.</b> You'll see each sheet with every box drawn in place, plus how much material is used and wasted.</li>
+    </ol>
+    <p class="hint">Not sure where to start? Pick one of the examples under the button. Curious how the layout was chosen? The Advanced tab shows the algorithm's work step by step.</p>
+    <div class="row" style="justify-content:flex-end">
+      <button class="btn primary" value="close">Got it</button>
+    </div>
+  </form>
+</dialog>
 
 <script src="solver.js"></script>
 <script>
@@ -544,7 +607,7 @@ svg text { font-family: var(--f-mono); }
     const last = state.items[state.items.length - 1];
     $(`bl${last.id}`).focus();
   };
-  $('preset').onchange = (e) => { if (e.target.value) { loadPreset(e.target.value); e.target.value = ''; run(); } };
+  $('preset').onchange = (e) => { if (e.target.value) { loadPreset(e.target.value); e.target.value = ''; run({ scroll: true }); } };
 
   // ---------- worker ----------
   let worker = null;
@@ -562,7 +625,7 @@ onmessage = (e) => {
     return w;
   }
 
-  function run() {
+  function run(opts = {}) {
     readParams();
     if (!validate()) return;
     if (worker) worker.terminate();
@@ -576,9 +639,11 @@ onmessage = (e) => {
       params: { ...state.params },
     };
     const labels = state.items.map((it) => it.label || 'Box');
-    $('run').textContent = 'Packing…';
+    $('run').textContent = 'Working…';
+    $('runAdv').disabled = true;
     $('run').disabled = true;
-    $('status').textContent = 'Ants are working…';
+    $('status').textContent = 'Trying layouts…';
+    $('statusAdv').textContent = 'Running…';
     const t0 = performance.now();
     let raf = 0;
     worker.onmessage = (e) => {
@@ -592,9 +657,12 @@ onmessage = (e) => {
         cancelAnimationFrame(raf);
         state.running = false;
         state.result = { ...m.res, input, labels, ms: performance.now() - t0 };
-        $('run').textContent = 'Pack sheets';
+        $('run').textContent = 'Find best layout';
+        $('runAdv').disabled = false;
         $('prog').style.width = '100%';
-        $('status').textContent = `Done in ${(state.result.ms / 1000).toFixed(1)} s · ${input.params.ants} ants × ${input.params.iterations} iterations = ${(input.params.ants * input.params.iterations).toLocaleString()} layouts tried.`;
+        $('status').textContent = `Done. Tried ${(input.params.ants * input.params.iterations).toLocaleString()} layouts in ${(state.result.ms / 1000).toFixed(1)} s and kept the best.`;
+        $('statusAdv').textContent = 'Done.';
+        if (opts.scroll && matchMedia('(max-width: 880px)').matches) $('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
         validate();
         renderResult();
         worker.terminate(); worker = null;
@@ -602,13 +670,16 @@ onmessage = (e) => {
     };
     worker.onerror = (err) => {
       state.running = false;
-      $('run').textContent = 'Pack sheets';
-      $('status').textContent = `The solver stopped: ${err.message}. Try fewer boxes or check the sizes.`;
+      $('run').textContent = 'Find best layout';
+      $('runAdv').disabled = false;
+      $('status').textContent = `Something went wrong while finding a layout (${err.message}). Try fewer boxes or check the sizes.`;
       validate();
     };
     worker.postMessage(input);
   }
-  $('run').onclick = run;
+  $('run').onclick = () => run({ scroll: true });
+  $('runAdv').onclick = () => run();
+  $('resetParams').onclick = () => { Object.assign(state.params, S.DEFAULTS); renderForm(); };
 
   // ---------- rendering helpers ----------
   const NS = 'http://www.w3.org/2000/svg';
@@ -648,9 +719,15 @@ onmessage = (e) => {
       const cap = Math.max(W, H) * 0.03;
       const size = Math.min(fs, cap);
       const txt = `${fmtLen(p.w, state.unit)}×${fmtLen(p.h, state.unit)}`;
+      const name = labels[p.item ?? p.t] || '';
       if (!opts.noText && size > Math.max(W, H) * 0.012 && txt.length * size * 0.62 < p.w * 0.92) {
-        const t = svgEl('text', { x: p.x + p.w / 2, y: p.y + p.h / 2, 'font-size': size, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: 'var(--ink)', 'pointer-events': 'none' }, svg);
+        const showName = name && name.length * size * 0.62 < p.w * 0.92 && p.h > size * 2.6;
+        const t = svgEl('text', { x: p.x + p.w / 2, y: p.y + p.h / 2 + (showName ? size * 0.6 : 0), 'font-size': size, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: 'var(--ink)', 'pointer-events': 'none' }, svg);
         t.textContent = txt;
+        if (showName) {
+          const n = svgEl('text', { x: p.x + p.w / 2, y: p.y + p.h / 2 - size * 0.6, 'font-size': size, 'font-weight': 600, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: 'var(--ink)', 'pointer-events': 'none' }, svg);
+          n.textContent = name;
+        }
       }
     });
     if (opts.highlight) {
@@ -708,6 +785,7 @@ onmessage = (e) => {
     const plot = svgEl('g', { 'clip-path': `url(#${clipId})` }, svg);
     for (const s of series) {
       if (s.hline != null) {
+        if (!isFinite(s.hline)) continue;
         svgEl('line', { x1: m.l, x2: W - m.r, y1: Y(s.hline), y2: Y(s.hline), stroke: s.color, 'stroke-width': 1.5, 'stroke-dasharray': '6 4' }, plot);
         continue;
       }
@@ -735,12 +813,19 @@ onmessage = (e) => {
     const dSheets = g.sheets.length - best.sheets.length;
     const lift = g.fitness > 0 ? ((best.fitness - g.fitness) / g.fitness) * 100 : 0;
     const lastFill = best.fills.at(-1) || 0;
+    const waste = 1 - best.utilization;
     el.innerHTML = `
-      <div class="stat"><span class="label">Sheets</span><b class="num">${best.sheets.length}</b><span class="d">${fmtLen(res.ctx.sheetW, state.unit)} × ${fmtLen(res.ctx.sheetH, state.unit)} ${state.unit}</span></div>
-      <div class="stat"><span class="label">Material used</span><b class="num">${(best.utilization * 100).toFixed(1)}%</b><span class="d">across all sheets</span></div>
-      <div class="stat"><span class="label">Boxes placed</span><b class="num">${placed}<span class="muted" style="font-size:18px"> / ${want}</span></b><span class="d">${want - placed ? `${want - placed} too big for the sheet` : 'all of them'}</span></div>
-      <div class="stat"><span class="label">Last sheet</span><b class="num">${(lastFill * 100).toFixed(0)}%</b><span class="d">full · ${((1 - lastFill) * 100).toFixed(0)}% left as offcut</span></div>
-      <div class="stat"><span class="label">vs. greedy</span><b class="num ${lift > 0.05 ? 'good' : ''}">${live ? '…' : (lift >= 0 ? '+' : '') + lift.toFixed(1) + '%'}</b><span class="d">${live ? 'running' : dSheets > 0 ? `${dSheets} fewer sheet${dSheets > 1 ? 's' : ''}` : 'score, same sheet count'}</span></div>`;
+      <div class="stat"><span class="label">Sheets needed</span><b class="num">${best.sheets.length}</b><span class="d">each ${fmtLen(res.ctx.sheetW, state.unit)} × ${fmtLen(res.ctx.sheetH, state.unit)} ${state.unit}</span></div>
+      <div class="stat"><span class="label">Material used</span><b class="num">${(best.utilization * 100).toFixed(0)}%</b><span class="d">${(waste * 100).toFixed(0)}% left over</span></div>
+      <div class="stat"><span class="label">Boxes placed</span><b class="num">${placed}<span class="muted" style="font-size:18px"> / ${want}</span></b><span class="d">${want - placed ? `${want - placed} too big for the sheet` : 'all of them fit'}</span></div>
+      <div class="stat"><span class="label">Last sheet</span><b class="num">${(lastFill * 100).toFixed(0)}%</b><span class="d">full, the rest is a usable offcut</span></div>`;
+    if (!live) renderAdvSummary(res, lift, dSheets);
+  }
+
+  function renderAdvSummary(res, lift, dSheets) {
+    const P = res.params;
+    $('advSummary').innerHTML = `Last run: ${P.ants} ants × ${P.iterations} rounds = ${(P.ants * P.iterations).toLocaleString()} layouts in ${(res.ms / 1000).toFixed(1)} s. ` +
+      `Compared with a simple greedy layout, the colony scored <b class="${lift > 0.05 ? 'good' : ''}">${lift >= 0 ? '+' : ''}${lift.toFixed(1)}%</b>${dSheets > 0 ? ` and saved ${dSheets} sheet${dSheets > 1 ? 's' : ''}` : ''}.`;
   }
 
   function renderWarnings(res) {
@@ -767,8 +852,14 @@ onmessage = (e) => {
       card.appendChild(drawSheet(res.ctx.sheetW, res.ctx.sheetH, parts, res.labels, { maxH: 460 }));
       const cap = document.createElement('div');
       cap.className = 'cap';
-      cap.innerHTML = `<span><b>Sheet ${i + 1}</b> · ${sh.parts.length} parts</span><span class="mono muted">${(best.fills[i] * 100).toFixed(1)}% full</span>`;
+      cap.innerHTML = `<span><b>Sheet ${i + 1}</b> · ${sh.parts.length} box${sh.parts.length === 1 ? '' : 'es'}</span><span class="mono muted">${(best.fills[i] * 100).toFixed(0)}% used</span>`;
       card.appendChild(cap);
+      const counts = new Map();
+      for (const p of parts) counts.set(p.item, (counts.get(p.item) || 0) + 1);
+      const list = document.createElement('div');
+      list.className = 'contents';
+      list.textContent = [...counts].map(([it, n]) => `${n} × ${res.labels[it] || 'Box'}`).join(', ');
+      card.appendChild(list);
       el.appendChild(card);
     });
     if (!best.sheets.length) el.innerHTML = '<div class="empty">Nothing could be placed. Check that boxes are smaller than the sheet.</div>';
@@ -809,7 +900,7 @@ onmessage = (e) => {
     const snap = res.snapshots[it];
     const nT = res.ctx.nT;
     const types = res.ctx.types;
-    $('heatIt').textContent = it === 0 ? 'before any ant ran' : `after iteration ${it}${res.restarts.includes(it) ? ' (reset)' : ''}`;
+    $('heatIt').textContent = it === 0 ? 'before any ant ran' : `after round ${it}${res.restarts.includes(it) ? ' (reset)' : ''}`;
     if (!snap || !nT) { $('heat').innerHTML = '<p class="hint">No pheromone to show.</p>'; return; }
     let lo = Infinity, hi = -Infinity;
     for (const v of snap) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
@@ -920,11 +1011,11 @@ onmessage = (e) => {
     $('stepSlider').max = Math.max(0, res.trace.length - 1);
     $('replayMeta').textContent = res.bestFromGreedy
       ? 'No ant beat the greedy pass, so this replays the greedy layout.'
-      : `Found in iteration ${res.bestIter} of ${res.params.iterations}.`;
+      : `Found in round ${res.bestIter} of ${res.params.iterations}.`;
     const single = res.ctx.nT === 1;
     $('insightLead').textContent = single
       ? 'There is only one box size, so the order of boxes cannot change anything. The layout comes from the placement rule alone and the colony has nothing to learn.'
-      : 'Each iteration, every ant builds a full layout. The best one leaves pheromone on the choices it made, and the next ants lean toward those choices.';
+      : 'Each round, every ant builds a full layout. The best one leaves pheromone on the choices it made, and the next ants lean toward those choices.';
     renderStep(res, Math.min(stepIdx, res.trace.length - 1));
   }
 
@@ -935,6 +1026,46 @@ onmessage = (e) => {
       if (state.result && !state.running) renderConv(state.result.history, state.result.greedy.fitness, state.result.params.iterations, state.result.restarts, state.result.bestIter);
     }, 120);
   }).observe($('convChart'));
+
+  // ---------- tabs ----------
+  const TABS = ['layout', 'advanced'];
+  function showTab(name, focus) {
+    if (!TABS.includes(name)) name = 'layout';
+    for (const t of TABS) {
+      const on = t === name;
+      $('tab-' + t).hidden = !on;
+      const b = $('tabBtn-' + t);
+      b.setAttribute('aria-selected', String(on));
+      b.tabIndex = on ? 0 : -1;
+    }
+    if (focus) $('tabBtn-' + name).focus();
+    if (name === 'advanced' && state.result && !state.running) {
+      const r = state.result;
+      renderConv(r.history, r.greedy.fitness, r.params.iterations, r.restarts, r.bestIter);
+      renderStep(r, stepIdx);
+    }
+    if (name !== 'advanced') stopPlay();
+  }
+  for (const t of TABS) {
+    $('tabBtn-' + t).onclick = () => { if (location.hash !== '#' + t) location.hash = t; else showTab(t); };
+    $('tabBtn-' + t).onkeydown = (e) => {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      const next = TABS[(TABS.indexOf(t) + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length];
+      location.hash = next;
+      showTab(next, true);
+    };
+  }
+  addEventListener('hashchange', () => showTab(location.hash.slice(1)));
+  showTab(location.hash.slice(1));
+
+  // ---------- how-to dialog ----------
+  const help = $('help');
+  $('openHelp').onclick = () => help.showModal();
+  help.addEventListener('click', (e) => { if (e.target === help) help.close(); });
+  help.addEventListener('close', () => { try { localStorage.setItem('sheetfit-help-seen', '1'); } catch (_) {} });
+  let seen = false;
+  try { seen = localStorage.getItem('sheetfit-help-seen') === '1'; } catch (_) {}
+  if (!seen) help.showModal();
 
   loadPreset('cabinet');
   run();
