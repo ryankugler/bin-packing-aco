@@ -9,7 +9,7 @@
 
 This project packs rectangles onto fixed-size sheets with Ant Colony Optimization (ACO). It finds layouts that use the fewest, fullest sheets. It comes in two forms that share one algorithm:
 
-- **`web/`**: a browser app (Antcut). You set the sheet size, the boxes, the kerf and the units (mm, cm, m, in, ft), and it shows how the colony reached its layout.
+- **`web/`**: a browser app (SheetFit). You set the sheet size, the boxes, the kerf and the units (mm, cm, m, in, ft), and it shows how the colony reached its layout.
 - **`main.py`**: a Python script that packs random rectangles and animates the result with matplotlib.
 
 ## Web app
@@ -22,12 +22,13 @@ python3 -m http.server 8000 --directory web
 
 Then visit http://localhost:8000.
 
-- **Inputs:** sheet width and height, kerf (the gap left between parts), and a list of boxes with name, size, quantity, and whether each may rotate. Imperial accepts fractions (`23 1/4`, `3-1/2`). Any field takes a unit suffix that overrides the current unit (`600mm`, `4ft`, `12"`).
-- **Results:** sheets used, material used, the layout for each sheet, any boxes too big for the sheet, and the gain over a greedy baseline.
-- **Insight:**
-  - *Convergence* plots the best-so-far score, each iteration's best ant and the average ant against the greedy baseline. Ticks mark pheromone resets.
+The page has two tabs:
+
+- **Layout** (the main page): pick units, enter the sheet size and the gap your saw blade leaves, list the boxes (name, size, how many, whether each can turn sideways), and press **Find best layout**. Each sheet is drawn with every box labelled, along with sheets needed, material used, and what goes on each sheet. Imperial accepts fractions (`23 1/4`, `3-1/2`). Any field takes a unit suffix that overrides the current unit (`600mm`, `4ft`, `12"`). A **How to use** guide opens on the first visit and from the header.
+- **Advanced**: algorithm settings (ants, rounds, seed, α, β, evaporation) with a **Run again** button, the comparison against a greedy baseline, and the insight views:
+  - *Convergence* plots the best-so-far score, each round's best ant and the average ant against the greedy baseline. Ticks mark pheromone resets.
   - *Decisiveness* plots the entropy of the ants' choices over time.
-  - *Pheromone map* is a heatmap of "after box A, place box B" trails at any iteration.
+  - *Pheromone map* is a heatmap of "after box A, place box B" trails at any round.
   - *Replay the winning ant* steps through each decision the best ant made. It shows every candidate's pheromone τ, heuristic η and probability, the random draw, and where each candidate would have landed.
 
 Run the solver tests with `node web/solver.test.js`.
