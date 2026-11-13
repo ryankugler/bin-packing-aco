@@ -14,3 +14,5 @@ ALPHA = 1.0           # Weight of pheromone (0 = no learning)
 BETA = 2.0            # Weight of the heuristic (higher = greedier)
 EVAPORATION = 0.1     # Share of pheromone lost each iteration
 SEED = 7              # Random seed, for repeatable runs
+SCRAP_WEIGHT = 2.0    # How hard to push leftover into one reusable piece (0 = ignore)
+COMPACT = True        # Slide boxes up and left once a sheet is full

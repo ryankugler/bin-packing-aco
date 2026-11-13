@@ -13,8 +13,11 @@ Model
   box area / area of the free rectangle it would land in.
 * Decoder: MaxRects with Best-Short-Side-Fit, both orientations when allowed.
   Positions are continuous, so decimal sizes and kerf work.
-* Fitness (higher is better): Falkenauer's sum(fill_i^2) / N plus a small bonus for a
-  large leftover offcut on the last sheet.
+* Fitness (higher is better): sum(fill_i^2 - scrap_weight * scrap_i) / N plus a small
+  bonus for a large offcut on the last sheet. scrap_i is leftover on sheet i that is not
+  part of its biggest empty rectangle (scattered gaps that are hard to reuse).
+* Compaction: when a sheet is full, every box slides up and left (or left and up,
+  whichever keeps the bigger leftover rectangle) so the leftover gathers in a corner.
 * Update: MAX-MIN Ant System. Evaporate, let only the iteration best (or the global
   best every 5th iteration) deposit, clamp to [tau_min, tau_max], restart on stagnation.
 """
@@ -114,6 +117,62 @@ class Sheet:
     def largest_free(self) -> float:
         return max((f.w * f.h for f in self.free), default=0.0)
 
+    def offcut(self, kerf: float) -> Free | None:
+        """Biggest leftover rectangle in real (non-kerf) size."""
+        if not self.free:
+            return None
+        f = max(self.free, key=lambda r: r.w * r.h)
+        w, h = f.w - kerf, f.h - kerf
+        return Free(f.x, f.y, w, h) if w > EPS and h > EPS else None
+
+
+def _slide(parts: list[Part], k: float, up_first: bool) -> list[list[float]]:
+    """Slide parts toward the top-left until nothing moves. Returns [x, y, w, h, part]."""
+    R = [[p.x, p.y, p.w + k, p.h + k, p] for p in parts]
+
+    def up(r):
+        ny = max((o[1] + o[3] for o in R if o is not r and o[1] + o[3] <= r[1] + EPS
+                  and o[0] < r[0] + r[2] - EPS and o[0] + o[2] > r[0] + EPS), default=0.0)
+        moved = r[1] - ny > EPS
+        r[1] = ny
+        return moved
+
+    def left(r):
+        nx = max((o[0] + o[2] for o in R if o is not r and o[0] + o[2] <= r[0] + EPS
+                  and o[1] < r[1] + r[3] - EPS and o[1] + o[3] > r[1] + EPS), default=0.0)
+        moved = r[0] - nx > EPS
+        r[0] = nx
+        return moved
+
+    for _ in range(20):
+        moved = False
+        R.sort(key=(lambda r: (r[1], r[0])) if up_first else (lambda r: (r[0], r[1])))
+        for r in R:
+            first, second = (up, left) if up_first else (left, up)
+            moved = first(r) | moved
+            moved = second(r) | moved
+        if not moved:
+            break
+    return R
+
+
+def compact(sheet: Sheet, kerf: float) -> Sheet:
+    best = None
+    for up_first in (True, False):
+        R = _slide(sheet.parts, kerf, up_first)
+        sh = Sheet(sheet.W, sheet.H)
+        for x, y, w, h, _ in R:
+            sh.place(x, y, w, h)
+        if best is None or sh.largest_free() > best[1].largest_free() + EPS:
+            best = (R, sh)
+    R, sh = best
+    if sh.largest_free() + EPS < sheet.largest_free():
+        return sheet
+    for x, y, _, _, p in R:
+        p.x, p.y = x, y
+    sh.parts = sheet.parts
+    return sh
+
 
 @dataclass
 class Solution:
@@ -122,6 +181,7 @@ class Solution:
     fitness: float
     fills: list[float]
     utilization: float
+    scraps: list[float] = field(default_factory=list)
 
 
 @dataclass
@@ -133,6 +193,8 @@ class Params:
     evaporation: float = 0.1
     seed: int = 7
     restart_after: int = 25
+    scrap_weight: float = 2.0
+    compact: bool = True
 
 
 class Packer:
@@ -193,7 +255,7 @@ class Packer:
                 w = eta if greedy else (tau[prev][t] ** self.P.alpha) * (eta ** self.P.beta)
                 cands.append((t, p, w))
             if not cands:
-                sheets.append(cur)
+                sheets.append(compact(cur, self.kerf) if self.P.compact else cur)
                 cur = Sheet(self.W, self.H)
                 prev = n
                 continue
@@ -216,7 +278,7 @@ class Packer:
             left -= 1
             prev = t
         if cur.parts:
-            sheets.append(cur)
+            sheets.append(compact(cur, self.kerf) if self.P.compact else cur)
         return self._evaluate(sheets, transitions)
 
     def _evaluate(self, sheets, transitions) -> Solution:
@@ -224,10 +286,13 @@ class Packer:
         if not sheets:
             return Solution([], transitions, 0.0, [], 0.0)
         fills = [sum(p.w * p.h for p in s.parts) / area for s in sheets]
-        offcut = min(1.0, sheets[-1].largest_free() / (self.W * self.H))
+        A = self.W * self.H
+        offcut = min(1.0, sheets[-1].largest_free() / A)
+        k = self.kerf
+        scraps = [max(0.0, (A - sum((p.w + k) * (p.h + k) for p in s.parts) - s.largest_free()) / A) for s in sheets]
         N = len(sheets)
-        f = sum(x * x for x in fills) / N + 0.1 * offcut / N
-        return Solution(sheets, transitions, f, fills, sum(fills) / N)
+        f = sum(x * x - self.P.scrap_weight * c for x, c in zip(fills, scraps)) / N + 0.1 * offcut / N
+        return Solution(sheets, transitions, f, fills, sum(fills) / N, scraps)
 
     # --- the colony ------------------------------------------------------
     def solve(self, verbose: bool = True) -> tuple[Solution, Solution]:

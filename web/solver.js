@@ -15,8 +15,10 @@
  *  - Decoder: MaxRects with Best-Short-Side-Fit, tries both orientations when allowed.
  *    Positions are continuous, so any unit and any decimal size works.
  *  - A sheet is closed when no remaining box fits; then a new sheet is opened.
- *  - Fitness (higher is better): Falkenauer's sum(fill_i^2) / N, plus a small bonus for
- *    a large leftover offcut on the last sheet. Rewards fewer, fuller sheets.
+ *  - Fitness (higher is better): Falkenauer's sum(fill_i^2 - scrapWeight * scrap_i) / N,
+ *    plus a small bonus for a large offcut on the last sheet. scrap_i is the leftover on
+ *    sheet i that is NOT part of its biggest empty rectangle, i.e. scattered pieces that
+ *    are hard to reuse. Rewards fewer, fuller sheets with leftovers kept in one piece.
  *  - Update: MAX-MIN Ant System. Evaporate everything, only the iteration best (or the
  *    global best every 5th iteration) deposits, and tau is clamped to [tauMin, tauMax].
  *    If nothing improves for a while, pheromone is reset to tauMax (restart).
@@ -96,6 +98,63 @@ function ACOSolverModule() {
     for (const f of sheet.free) m = Math.max(m, f.w * f.h);
     return m;
   }
+  // biggest leftover rectangle, in real (non-kerf) size, or null if it's too small to matter
+  function offcutRect(ctx, sheet) {
+    let best = null;
+    for (const f of sheet.free) if (!best || f.w * f.h > best.w * best.h) best = f;
+    if (!best) return null;
+    const w = best.w - ctx.kerf, h = best.h - ctx.kerf;
+    if (w <= EPS || h <= EPS) return null;
+    return { x: best.x, y: best.y, w, h };
+  }
+
+  // ---------- compaction ----------
+  // Slide every part toward the top-left (dir 'ul': up then left; 'lu': left then up) until
+  // nothing moves. Pushes leftover space toward the bottom/right so it ends up in one piece.
+  function slide(parts, k, dir) {
+    const R = parts.map((p) => ({ p, x: p.x, y: p.y, w: p.w + k, h: p.h + k }));
+    const up = (r) => {
+      let ny = 0;
+      for (const o of R) if (o !== r && o.y + o.h <= r.y + EPS && o.x < r.x + r.w - EPS && o.x + o.w > r.x + EPS) ny = Math.max(ny, o.y + o.h);
+      const moved = r.y - ny > EPS; r.y = ny; return moved;
+    };
+    const left = (r) => {
+      let nx = 0;
+      for (const o of R) if (o !== r && o.x + o.w <= r.x + EPS && o.y < r.y + r.h - EPS && o.y + o.h > r.y + EPS) nx = Math.max(nx, o.x + o.w);
+      const moved = r.x - nx > EPS; r.x = nx; return moved;
+    };
+    for (let pass = 0; pass < 20; pass++) {
+      let moved = false;
+      R.sort((a, b) => (dir === 'ul' ? a.y - b.y || a.x - b.x : a.x - b.x || a.y - b.y));
+      for (const r of R) {
+        if (dir === 'ul') { moved = up(r) | moved; moved = left(r) | moved; }
+        else { moved = left(r) | moved; moved = up(r) | moved; }
+      }
+      if (!moved) break;
+    }
+    return R;
+  }
+
+  function rebuild(ctx, R) {
+    const sh = newSheet(ctx.W, ctx.H);
+    for (const r of R) placeRect(sh, r.x, r.y, r.w, r.h);
+    return sh;
+  }
+
+  // Try both slide directions and keep the one with the biggest single leftover rectangle.
+  function compact(ctx, sheet) {
+    let best = null;
+    for (const dir of ['ul', 'lu']) {
+      const R = slide(sheet.parts, ctx.kerf, dir);
+      const sh = rebuild(ctx, R);
+      const big = largestFree(sh);
+      if (!best || big > best.big + EPS) best = { R, sh, big };
+    }
+    if (best.big + EPS < largestFree(sheet)) return sheet; // never make it worse
+    for (const r of best.R) { r.p.x = r.x; r.p.y = r.y; }
+    best.sh.parts = sheet.parts;
+    return best.sh;
+  }
 
   // ---------- problem setup ----------
   // input: { sheetW, sheetH, kerf, items: [{ w, h, qty, rotate, label }], params }
@@ -143,11 +202,18 @@ function ACOSolverModule() {
     const fills = sheets.map((s) => s.parts.reduce((a, p) => a + p.w * p.h, 0) / sheetArea);
     const last = sheets[N - 1];
     const offcut = Math.min(1, largestFree(last) / (ctx.W * ctx.H));
+    const A = ctx.W * ctx.H;
+    const scraps = sheets.map((s) => {
+      let used = 0;
+      for (const p of s.parts) used += (p.w + ctx.kerf) * (p.h + ctx.kerf);
+      return Math.max(0, (A - used - largestFree(s)) / A);
+    });
+    const mu = ctx.P.scrapWeight || 0;
     let f = 0;
-    for (const x of fills) f += x * x;
+    for (let i = 0; i < N; i++) f += fills[i] * fills[i] - mu * scraps[i];
     f = f / N + (0.1 * offcut) / N;
     const utilization = fills.reduce((a, b) => a + b, 0) / N;
-    return { fitness: f, fills, utilization, offcut };
+    return { fitness: f, fills, utilization, offcut, scraps, scrap: scraps.reduce((a, b) => a + b, 0) / N };
   }
 
   /*
@@ -180,7 +246,7 @@ function ACOSolverModule() {
         sumW += w;
       }
       if (!cands.length) {
-        sheets.push(cur);
+        sheets.push(P.compact ? compact(ctx, cur) : cur);
         cur = newSheet(ctx.W, ctx.H);
         prev = nT;
         continue;
@@ -215,7 +281,7 @@ function ACOSolverModule() {
           pick,
           r: r === null ? null : r / sumW,
           cands: cands.map((k) => ({ t: k.t, tau: k.tau, eta: k.eta, p: k.w / sumW, x: k.p.x, y: k.p.y, rot: k.p.rot })),
-          part,
+          part: { ...part },
         });
       }
       transitions.push(prev * nT + c.t);
@@ -223,11 +289,11 @@ function ACOSolverModule() {
       left--;
       prev = c.t;
     }
-    if (cur.parts.length) sheets.push(cur);
+    if (cur.parts.length) sheets.push(P.compact ? compact(ctx, cur) : cur);
 
     const ev = evaluate(ctx, sheets);
     return {
-      sheets: sheets.map((s) => ({ parts: s.parts, offcut: largestFree(s) })),
+      sheets: sheets.map((s) => ({ parts: s.parts, offcut: largestFree(s), offcutRect: offcutRect(ctx, s) })),
       transitions,
       ...ev,
       entropy: decisions ? entropySum / decisions : 0,
@@ -235,11 +301,12 @@ function ACOSolverModule() {
     };
   }
 
-  const DEFAULTS = { ants: 20, iterations: 80, alpha: 1, beta: 2, evaporation: 0.1, seed: 7, restartAfter: 25, tauSpread: 2 };
+  const DEFAULTS = { ants: 20, iterations: 80, alpha: 1, beta: 2, evaporation: 0.1, seed: 7, restartAfter: 25, tauSpread: 2, scrapWeight: 2, compact: true };
 
   function solve(input, onProgress) {
     const P = Object.assign({}, DEFAULTS, input.params || {});
     const ctx = buildContext(input);
+    ctx.P = P;
     const nT = ctx.nT;
     const rng = mulberry32(P.seed >>> 0);
     const rho = 1 - P.evaporation;
@@ -309,9 +376,11 @@ function ACOSolverModule() {
 
     // Replay the best ant with tracing so the UI can show every decision it made.
     let trace = [];
+    let replayMatches = true;
     if (bestSeed !== null) {
       const replay = construct(ctx, bestTau, P, mulberry32(bestSeed), 'aco', true);
       trace = replay.steps;
+      replayMatches = JSON.stringify(replay.sheets.map((s) => s.parts)) === JSON.stringify(best.sheets.map((s) => s.parts));
     } else {
       trace = construct(ctx, null, P, null, 'greedy', true).steps;
     }
@@ -326,6 +395,7 @@ function ACOSolverModule() {
       history,
       snapshots,
       trace,
+      replayMatches,
       restarts,
       tauMax,
       tauMin,
@@ -333,7 +403,7 @@ function ACOSolverModule() {
   }
 
   function strip(sol) {
-    return { sheets: sol.sheets, fitness: sol.fitness, fills: sol.fills, utilization: sol.utilization, offcut: sol.offcut };
+    return { sheets: sol.sheets, fitness: sol.fitness, fills: sol.fills, utilization: sol.utilization, offcut: sol.offcut, scraps: sol.scraps, scrap: sol.scrap };
   }
   function publicCtx(ctx) {
     return { sheetW: ctx.sheetW, sheetH: ctx.sheetH, kerf: ctx.kerf, types: ctx.types, nT: ctx.nT, total: ctx.total, unplaceable: ctx.unplaceable };

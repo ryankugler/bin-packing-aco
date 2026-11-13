@@ -19,6 +19,10 @@ def run_animation(packer, best, greedy):
         ax.set_aspect("equal")
         ax.set_title(f"Sheet {i + 1} ({best.fills[i]:.0%} full)")
         ax.add_patch(patches.Rectangle((0, 0), packer.sheet_w, packer.sheet_h, fill=False, edgecolor="black"))
+        oc = sheets[i].offcut(packer.kerf)
+        if oc:
+            ax.add_patch(patches.Rectangle((oc.x, oc.y), oc.w, oc.h, fill=False, hatch="//",
+                                           edgecolor="grey", linestyle="--", label="reusable offcut"))
 
     h = packer.history
     its = [x["it"] for x in h]
