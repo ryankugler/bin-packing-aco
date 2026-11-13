@@ -22,9 +22,10 @@ python3 -m http.server 8000 --directory web
 
 Then visit http://localhost:8000.
 
-The page has two tabs:
+The page has three tabs. **Free cut** and **Guillotine cut** share the same inputs; switching between them re-runs the job in that mode and says how many sheets the other mode needs.
 
-- **Layout** (the main page): pick units, enter the sheet size and the gap your saw blade leaves, list the boxes (name, size, how many, whether each can turn sideways), and press **Find best layout**. Each sheet is drawn with every box labelled, along with sheets needed, material used, and what goes on each sheet. Imperial accepts fractions (`23 1/4`, `3-1/2`). Any field takes a unit suffix that overrides the current unit (`600mm`, `4ft`, `12"`). A **How to use** guide opens on the first visit and from the header.
+- **Free cut** (the default): boxes can go anywhere, for laser, CNC router or plotter cutting. Pick units, enter the sheet size and the gap your saw blade leaves, list the boxes (name, size, how many, and a **Rotation** toggle: *Can turn* or *Fixed*), and press **Find best layout**. Each sheet is drawn with every box labelled, along with sheets needed, material used, and what goes on each sheet. Imperial accepts fractions (`23 1/4`, `3-1/2`). Any field takes a unit suffix that overrides the current unit (`600mm`, `4ft`, `12"`). A **How to use** guide opens on the first visit and from the header.
+- **Guillotine cut**: every cut runs straight across the piece from edge to edge, so a guillotine cutter, panel saw or table saw can make it. Cut lines are drawn on each sheet, numbered in a valid cutting order, with a total cut count.
 - **Advanced**: algorithm settings (ants, rounds, seed, α, β, evaporation) with a **Run again** button, the comparison against a greedy baseline, and the insight views:
   - *Convergence* plots the best-so-far score, each round's best ant and the average ant against the greedy baseline. Ticks mark pheromone resets.
   - *Decisiveness* plots the entropy of the ants' choices over time.
@@ -64,6 +65,16 @@ $$
 On 21 test jobs, the scrap penalty plus sliding cut scattered scrap from 6.2% to 4.6% of each sheet on average, with no extra sheets. On the cabinet example it went from 6.3% to 3.5%. Changing where boxes are placed (packing toward a corner) used 3 more sheets, and a fragmentation term in the heuristic didn't help, so neither is included.
 
 The app hatches each sheet's biggest leftover rectangle as the **reusable offcut** and reports material used, reusable offcuts and scrap separately.
+
+### Guillotine mode
+
+Guillotine cutters, panel saws and table saws can only make straight cuts that run all the way across the piece being cut. Guillotine mode only builds layouts that can be cut that way:
+
+- **Placement:** free space is kept as non-overlapping rectangles. A box goes in the top-left corner of one, and the rest of that rectangle is split by two cuts. The first runs fully across the rectangle, and the second runs across the strip holding the box. Every cut divides one piece into two, so the cuts as recorded are already a valid cutting order.
+- **Split direction:** for each box the ant chooses which cut comes first (across, or down). The default rule favours the split whose bigger leftover piece is smaller ("min area"), which leaves less scrap and needs fewer cuts. A second pheromone, per box type and direction, lets the colony learn when to go against the rule.
+- **No sliding:** the slide step is skipped here, because sliding boxes would break the straight cuts.
+
+On the 21 test jobs, guillotine layouts need 81 sheets against 79 for free cut. With a fixed split rule and no learning they needed 83. Every result is checked by an independent test that recursively splits the layout with edge-to-edge cuts. Guillotine mode is in the web app only; the Python solver supports free cut.
 
 ### Learning (MAX-MIN Ant System)
 
