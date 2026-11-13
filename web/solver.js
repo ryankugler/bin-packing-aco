@@ -476,7 +476,7 @@ function ACOSolverModule() {
     };
   }
 
-  const DEFAULTS = { ants: 30, iterations: 150, alpha: 1, beta: 2, evaporation: 0.1, seed: 7, restartAfter: 25, tauSpread: 2, scrapWeight: 2, compact: true, cutMode: 'free', splitRule: 'minarea', learnSplit: true, splitBias: 0.6, groupWeight: 0, cutWeight: 0 };
+  const DEFAULTS = { ants: 100, iterations: 500, alpha: 1, beta: 2, evaporation: 0.1, seed: 7, restartAfter: 25, tauSpread: 2, scrapWeight: 2, compact: true, cutMode: 'free', splitRule: 'minarea', learnSplit: true, splitBias: 0.6, groupWeight: 0, cutWeight: 0 };
 
   function solve(input, onProgress) {
     const P = Object.assign({}, DEFAULTS, input.params || {});

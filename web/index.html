@@ -512,7 +512,7 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
     unit: 'in',
     sheetW: 48 * 25.4, sheetH: 96 * 25.4, kerf: 0,
     items: [],
-    params: { ants: 30, iterations: 150, seed: 7, alpha: 1, beta: 2, evaporation: 0.1, scrapWeight: 2, compact: true },
+    params: { ants: S.DEFAULTS.ants, iterations: S.DEFAULTS.iterations, seed: 7, alpha: 1, beta: 2, evaporation: 0.1, scrapWeight: 2, compact: true },
     result: null,
     results: { free: null, guillotine: null },
     prefs: { group: true, fewestCuts: true },
@@ -634,8 +634,8 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
   function readParams() {
     const clamp = (v, lo, hi, d) => (isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
     const P = state.params;
-    P.ants = Math.round(clamp(+$('pAnts').value, 1, 100, 20));
-    P.iterations = Math.round(clamp(+$('pIters').value, 1, 500, 80));
+    P.ants = Math.round(clamp(+$('pAnts').value, 1, 100, S.DEFAULTS.ants));
+    P.iterations = Math.round(clamp(+$('pIters').value, 1, 500, S.DEFAULTS.iterations));
     P.seed = Math.round(clamp(+$('pSeed').value, 0, 4294967295, 7));
     P.alpha = clamp(+$('pAlpha').value, 0, 5, 1);
     P.beta = clamp(+$('pBeta').value, 0, 8, 2);
