@@ -25,6 +25,7 @@ Then visit http://localhost:8000.
 The page has three tabs. **Free cut** and **Guillotine cut** share the same inputs; switching between them re-runs the job in that mode and says how many sheets the other mode needs.
 
 - **Free cut** (the default): boxes can go anywhere, for laser, CNC router or plotter cutting. Pick units, enter the sheet size and the gap your saw blade leaves, list the boxes (name, size, how many, and a **Rotation** toggle: *Can turn* or *Fixed*), and press **Find best layout**. Each sheet is drawn with every box labelled, along with sheets needed, material used, and what goes on each sheet. Imperial accepts fractions (`23 1/4`, `3-1/2`). Any field takes a unit suffix that overrides the current unit (`600mm`, `4ft`, `12"`). A **How to use** guide opens on the first visit and from the header.
+- **Preferences** (in the sidebar, on by default): *Keep matching boxes together* puts same-size boxes side by side. On the guillotine tab, *Fewest cuts* favours layouts that are quicker to cut, even if more material is left over.
 - **Guillotine cut**: every cut runs straight across the piece from edge to edge, so a guillotine cutter, panel saw or table saw can make it. Cut lines are drawn on each sheet, numbered in a valid cutting order, with a total cut count.
 - **Advanced**: algorithm settings (ants, rounds, seed, α, β, evaporation) with a **Run again** button, the comparison against a greedy baseline, and the insight views:
   - *Convergence* plots the best-so-far score, each round's best ant and the average ant against the greedy baseline. Ticks mark pheromone resets.
@@ -73,8 +74,30 @@ Guillotine cutters, panel saws and table saws can only make straight cuts that r
 - **Placement:** free space is kept as non-overlapping rectangles. A box goes in the top-left corner of one, and the rest of that rectangle is split by two cuts. The first runs fully across the rectangle, and the second runs across the strip holding the box. Every cut divides one piece into two, so the cuts as recorded are already a valid cutting order.
 - **Split direction:** for each box the ant chooses which cut comes first (across, or down). The default rule favours the split whose bigger leftover piece is smaller ("min area"), which leaves less scrap and needs fewer cuts. A second pheromone, per box type and direction, lets the colony learn when to go against the rule.
 - **No sliding:** the slide step is skipped here, because sliding boxes would break the straight cuts.
+- **Boxes stay against edges:** each placement needs 0, 1 or 2 new cuts, depending on whether the box sits flush with the edges of its piece. The heuristic divides η by `1 + 0.5 × new cuts`, so flush placements against the sheet edge or previous cuts are preferred. This avoids boxes floating in the middle of a region, which would need extra trim cuts.
+- **Fewest cuts** (on by default): raises that factor to `1 + 1.5 × new cuts`, subtracts `0.1 × cuts per box` from the score, and cuts the scrap penalty to a quarter. Leftover shape matters much less than how easy the sheet is to cut.
 
 On the 21 test jobs, guillotine layouts need 81 sheets against 79 for free cut. With a fixed split rule and no learning they needed 83. Every result is checked by an independent test that recursively splits the layout with edge-to-edge cuts. Guillotine mode is in the web app only; the Python solver supports free cut.
+
+### Keep matching boxes together
+
+This preference is on by default and works in both modes.
+- **Heuristic:** η is multiplied by `1 + 2` when the spot touches a box of the same type, and by a further `+1` when the type is the same as the last box placed.
+- **Score:** adds `0.25 ×` the share of repeated boxes that touch a matching box.
+
+### Benchmarks for these preferences
+
+On the 21 test jobs, averaged over two seeds:
+
+| Setting | Sheets | Cuts per box | Boxes next to a match |
+|---|---|---|---|
+| Free cut | 79 | — | 81% |
+| Free cut + keep matching together | 79 | — | 94% |
+| Guillotine (before) | 81 | 1.53 | 83% |
+| Guillotine + edge preference | 80.5 | 1.52 | 83% |
+| Guillotine + fewest cuts + keep matching together | 80 | 1.41 | 94% |
+
+On the cabinet example, guillotine went from 47 cuts to 38. The defaults are now 30 ants × 150 rounds (was 20 × 80). That costs about 1 s on the cabinet job and gives slightly less scrap and fewer cuts.
 
 ### Learning (MAX-MIN Ant System)
 
