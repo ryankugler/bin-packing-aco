@@ -107,7 +107,7 @@ What was tried and dropped:
 - **Strip-first decoder** (cut full-length strips, then shelves): needed 83 sheets for about the same cut lines.
 - **Score weight on cut lines:** at 0.1 it barely mattered; at 1.0 it needed 89.5 sheets and gave more lines, not fewer. 0.4 is the default.
 
-The defaults are 30 ants × 150 rounds, and blade width (kerf) defaults to 0.
+The defaults are the maximum the app allows, 100 ants × 500 rounds (50,000 layouts per run), and blade width (kerf) defaults to 0.
 
 ### Learning (MAX-MIN Ant System)
 
