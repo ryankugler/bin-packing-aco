@@ -41,7 +41,7 @@ function ACOSolverModule() {
 
   // ---------- MaxRects sheet ----------
   function newSheet(W, H) {
-    return { W, H, free: [{ x: 0, y: 0, w: W, h: H }], parts: [], cuts: [] };
+    return { W, H, free: [{ x: 0, y: 0, w: W, h: H }], parts: [], cuts: [], lines: new Set(), vPos: [], hPos: [] };
   }
 
   // Best-Short-Side-Fit for a w x h rectangle. Ties: long side, then top-most, then left-most.
@@ -98,28 +98,82 @@ function ACOSolverModule() {
     sheet.free = keep;
   }
 
+  // Cuts on the same straight line can be made in one pass (pieces are stacked or kept
+  // aligned on the cutter), so layouts are judged by distinct cut lines.
+  const lineKey = (vertical, pos) => Math.round(pos * 1e4) * 2 + (vertical ? 1 : 0); // numeric: fast Set lookups
+  function addCut(sheet, c) {
+    sheet.cuts.push(c);
+    const vertical = c.x1 === c.x2, pos = vertical ? c.x1 : c.y1, key = lineKey(vertical, pos);
+    if (!sheet.lines.has(key)) { sheet.lines.add(key); (vertical ? sheet.vPos : sheet.hPos).push(pos); }
+  }
+
   /*
-   * Guillotine placement. Free rects never overlap. The box goes in the top-left corner of
-   * free rect f, and the rest of f is split by one straight cut across f and a second cut
-   * across the strip holding the box. Every cut runs edge to edge through the piece it
-   * divides, so the whole sheet can be cut on a guillotine, panel saw or table saw.
+   * Fewest-cuts placement for guillotine mode. A box may sit anywhere in a free rect, not
+   * just its top-left corner, so its edges can line up with cut lines already on the sheet.
+   * Each needed cut is scored as new (a fresh line) or free (lands on an existing line).
+   * Left/right cuts depend only on x and top/bottom only on y, so they're chosen separately.
+   */
+  function fitAligned(ctx, sheet, w, h) {
+    const k = ctx.kerf, SW = ctx.sheetW, SH = ctx.sheetH;
+    const axis = (lo, len, size, lines, edge, vertical) => {
+      const hi = lo + len - size;
+      const cand = [lo, hi];
+      for (const L of lines) { cand.push(L + k / 2, L - size + k / 2); }
+      let best = null;
+      for (const x of cand) {
+        if (x < lo - EPS || x > hi + EPS) continue;
+        const xx = Math.min(hi, Math.max(lo, x));
+        let fresh = 0, segs = 0;
+        if (xx - lo > EPS) { segs++; const c = xx - k / 2; if (c > EPS && !sheet.lines.has(lineKey(vertical, c))) fresh++; }
+        if (lo + len - (xx + size) > EPS) { const c = xx + size - k / 2; if (c < edge - EPS) { segs++; if (!sheet.lines.has(lineKey(vertical, c))) fresh++; } }
+        const cost = fresh * 10 + segs + (xx - lo) / (len + 1) * 0.01; // prefer the near edge on ties
+        if (!best || cost < best.cost - 1e-12) best = { x: xx, fresh, segs, cost };
+      }
+      return best;
+    };
+    let best = null;
+    for (let i = 0; i < sheet.free.length; i++) {
+      const f = sheet.free[i];
+      if (w > f.w + EPS || h > f.h + EPS) continue;
+      const ax = axis(f.x, f.w, w, sheet.vPos, SW, true), ay = axis(f.y, f.h, h, sheet.hPos, SH, false);
+      const fresh = ax.fresh + ay.fresh, segs = ax.segs + ay.segs;
+      const s1 = Math.min(f.w - w, f.h - h), s2 = Math.max(f.w - w, f.h - h);
+      const key = [fresh, segs, s1, s2, ay.x, ax.x];
+      if (!best || key.some((v, j) => v !== best.key[j]) && lexLess(key, best.key)) {
+        best = { key, x: ax.x, y: ay.x, w, h, s1, s2, freeArea: f.w * f.h, fi: i, cutsAdded: fresh, segs };
+      }
+    }
+    return best;
+  }
+  function lexLess(a, b) {
+    for (let i = 0; i < a.length; i++) { if (a[i] < b[i] - 1e-9) return true; if (a[i] > b[i] + 1e-9) return false; }
+    return false;
+  }
+
+  /*
+   * Guillotine placement. Free rects never overlap. The box goes in free rect f (top-left
+   * corner normally, anywhere when lining up with existing cuts), and the rest of f is split
+   * by straight cuts: first across f, then across the band or column holding the box.
+   * Every cut runs edge to edge through the piece it divides, so the whole sheet can be cut on a guillotine, panel saw or table saw.
    * Cuts are recorded in order; that order is a valid cutting sequence.
    */
   function placeGuillotine(ctx, sheet, p, rng) {
     const f = sheet.free[p.fi];
     sheet.free.splice(p.fi, 1);
-    const { w, h } = p;
-    const lw = f.w - w, lh = f.h - h;
-    // A: cut across the full width first. B: cut down the full height first.
-    const A = [{ x: f.x, y: f.y + h, w: f.w, h: lh }, { x: f.x + w, y: f.y, w: lw, h }];
-    const B = [{ x: f.x + w, y: f.y, w: lw, h: f.h }, { x: f.x, y: f.y + h, w, h: lh }];
+    const { x, y, w, h } = p;
+    const dl = x - f.x, dr = f.x + f.w - (x + w), dt = y - f.y, db = f.y + f.h - (y + h);
+    // A: cut across the full width first (bands above/below), then split the box's row.
+    // B: cut down the full height first (columns left/right), then split the box's column.
+    const A = [{ x: f.x, y: f.y, w: f.w, h: dt }, { x: f.x, y: y + h, w: f.w, h: db }, { x: f.x, y, w: dl, h }, { x: x + w, y, w: dr, h }];
+    const B = [{ x: f.x, y: f.y, w: dl, h: f.h }, { x: x + w, y: f.y, w: dr, h: f.h }, { x, y: f.y, w, h: dt }, { x, y: y + h, w, h: db }];
     const area = (r) => (r.w > EPS && r.h > EPS ? r.w * r.h : 0);
+    const big = (L) => Math.max(...L.map(area));
     let horizFirst;
     switch (ctx.P.splitRule) {
-      case 'shorter': horizFirst = lw < lh; break;
-      case 'longer': horizFirst = lw >= lh; break;
-      case 'maxarea': horizFirst = Math.max(area(A[0]), area(A[1])) >= Math.max(area(B[0]), area(B[1])); break;
-      default: horizFirst = Math.max(area(A[0]), area(A[1])) <= Math.max(area(B[0]), area(B[1])); // 'minarea'
+      case 'shorter': horizFirst = dl + dr < dt + db; break;
+      case 'longer': horizFirst = dl + dr >= dt + db; break;
+      case 'maxarea': horizFirst = big(A) >= big(B); break;
+      default: horizFirst = big(A) <= big(B); // 'minarea'
     }
     // ants choose the cut direction: the split rule's pick is favoured, pheromone learns per box type
     if (rng && ctx.splitTau) {
@@ -129,20 +183,22 @@ function ACOSolverModule() {
       horizFirst = rng() * (wH + wV) < wH;
     }
     if (p.splitLog) p.splitLog.push(2 * p.t + (horizFirst ? 0 : 1));
-    const pieces = horizFirst ? A : B;
-    for (const r of pieces) if (r.w > EPS && r.h > EPS) sheet.free.push(r);
-    // record cut lines in real coordinates (middle of the kerf), clipped to the sheet
-    const k = ctx.kerf, SW = ctx.sheetW, SH = ctx.sheetH;
+    for (const r of horizFirst ? A : B) if (r.w > EPS && r.h > EPS) sheet.free.push(r);
+    // record cut lines in real coordinates (middle of the kerf), clipped to the sheet, in a valid order
+    const k = ctx.kerf, SW = ctx.sheetW, SH = ctx.sheetH, h2 = k / 2;
     const clipX = (v) => Math.max(0, Math.min(SW, v)), clipY = (v) => Math.max(0, Math.min(SH, v));
-    const hcut = (y, x1, x2) => sheet.cuts.push({ x1: clipX(x1), y1: clipY(y), x2: clipX(x2), y2: clipY(y) });
-    const vcut = (x, y1, y2) => sheet.cuts.push({ x1: clipX(x), y1: clipY(y1), x2: clipX(x), y2: clipY(y2) });
-    const cy = f.y + h - k / 2, cx = f.x + w - k / 2;
+    const hcut = (cy, x1, x2) => { if (cy > EPS && cy < SH - EPS) addCut(sheet, { x1: clipX(x1), y1: clipY(cy), x2: clipX(x2), y2: clipY(cy) }); };
+    const vcut = (cx, y1, y2) => { if (cx > EPS && cx < SW - EPS) addCut(sheet, { x1: clipX(cx), y1: clipY(y1), x2: clipX(cx), y2: clipY(y2) }); };
     if (horizFirst) {
-      if (lh > EPS && cy < SH - EPS) hcut(cy, f.x - k / 2, f.x + f.w - k / 2);
-      if (lw > EPS && cx < SW - EPS) vcut(cx, f.y - k / 2, f.y + h - k / 2);
+      if (dt > EPS) hcut(y - h2, f.x - h2, f.x + f.w - h2);
+      if (db > EPS) hcut(y + h - h2, f.x - h2, f.x + f.w - h2);
+      if (dl > EPS) vcut(x - h2, y - h2, y + h - h2);
+      if (dr > EPS) vcut(x + w - h2, y - h2, y + h - h2);
     } else {
-      if (lw > EPS && cx < SW - EPS) vcut(cx, f.y - k / 2, f.y + f.h - k / 2);
-      if (lh > EPS && cy < SH - EPS) hcut(cy, f.x - k / 2, f.x + w - k / 2);
+      if (dl > EPS) vcut(x - h2, f.y - h2, f.y + f.h - h2);
+      if (dr > EPS) vcut(x + w - h2, f.y - h2, f.y + f.h - h2);
+      if (dt > EPS) hcut(y - h2, x - h2, x + w - h2);
+      if (db > EPS) hcut(y + h - h2, x - h2, x + w - h2);
     }
   }
 
@@ -232,6 +288,15 @@ function ACOSolverModule() {
   // best placement of type t on sheet (tries rotation)
   function placementFor(ctx, sheet, t) {
     const ty = ctx.types[t];
+    if (ctx.P.cutMode === 'guillotine' && ctx.P.cutWeight && ctx.P.alignCuts !== false) {
+      let p = fitAligned(ctx, sheet, ty.ew, ty.eh);
+      if (p) p.rot = false;
+      if (ty.rotate) {
+        const q = fitAligned(ctx, sheet, ty.eh, ty.ew);
+        if (q && (!p || lexLess(q.key, p.key))) { q.rot = true; p = q; }
+      }
+      return p;
+    }
     let p = fitBSSF(sheet, ty.ew, ty.eh);
     if (p) p.rot = false;
     if (ty.rotate) {
@@ -257,7 +322,7 @@ function ACOSolverModule() {
     // Guillotine: each placement needs 0, 1 or 2 new cuts depending on how flush it sits.
     // Flush placements keep boxes against edges and previous cuts, so they're favoured.
     if (P.cutMode === 'guillotine') {
-      const cutsAdded = (p.s1 > EPS ? 1 : 0) + (p.s2 > EPS ? 1 : 0);
+      const cutsAdded = p.cutsAdded ?? ((p.s1 > EPS ? 1 : 0) + (p.s2 > EPS ? 1 : 0));
       eta /= 1 + (0.5 + (P.cutWeight || 0)) * cutsAdded;
     }
     // Grouping: favour repeating the last box type and landing next to a box of the same type.
@@ -312,11 +377,12 @@ function ACOSolverModule() {
     f = f / N + (0.1 * offcut) / N;
     const nParts = sheets.reduce((a, s) => a + s.parts.length, 0) || 1;
     const cuts = guillotine ? sheets.reduce((a, s) => a + s.cuts.length, 0) : 0;
-    if (cw) f -= 0.1 * cw * (cuts / nParts);
+    const cutLines = guillotine ? sheets.reduce((a, s) => a + s.lines.size, 0) : 0;
+    if (cw) f -= 0.4 * cw * ((P.alignCuts === false ? cuts : cutLines) / nParts);
     const grouping = groupScore(ctx, sheets);
     if (P.groupWeight) f += 0.25 * P.groupWeight * grouping;
     const utilization = fills.reduce((a, b) => a + b, 0) / N;
-    return { fitness: f, fills, utilization, offcut, scraps, scrap: scraps.reduce((a, b) => a + b, 0) / N, cuts, grouping };
+    return { fitness: f, fills, utilization, offcut, scraps, scrap: scraps.reduce((a, b) => a + b, 0) / N, cuts, cutLines, grouping };
   }
 
   /*
@@ -329,10 +395,12 @@ function ACOSolverModule() {
     const cnt = ctx.types.map((t) => t.qty);
     let left = ctx.total;
     const sheets = [];
-    let cur = newSheet(ctx.W, ctx.H);
+    const splits = [];
+    const openSheet = () => newSheet(ctx.W, ctx.H);
+    const closeSheet = (sh) => (P.compact && !guillotine ? compact(ctx, sh) : sh);
+    let cur = openSheet();
     let prev = nT;
     const transitions = [];
-    const splits = [];
     const steps = trace ? [] : null;
     let entropySum = 0, decisions = 0;
 
@@ -351,8 +419,8 @@ function ACOSolverModule() {
         sumW += w;
       }
       if (!cands.length) {
-        sheets.push(P.compact && !guillotine ? compact(ctx, cur) : cur);
-        cur = newSheet(ctx.W, ctx.H);
+        sheets.push(closeSheet(cur));
+        cur = openSheet();
         prev = nT;
         continue;
       }
@@ -395,7 +463,7 @@ function ACOSolverModule() {
       left--;
       prev = c.t;
     }
-    if (cur.parts.length) sheets.push(P.compact && !guillotine ? compact(ctx, cur) : cur);
+    if (cur.parts.length) sheets.push(closeSheet(cur));
 
     const ev = evaluate(ctx, sheets);
     return {
@@ -522,7 +590,7 @@ function ACOSolverModule() {
   }
 
   function strip(sol) {
-    return { sheets: sol.sheets, fitness: sol.fitness, fills: sol.fills, utilization: sol.utilization, offcut: sol.offcut, scraps: sol.scraps, scrap: sol.scrap, cuts: sol.cuts, grouping: sol.grouping };
+    return { sheets: sol.sheets, fitness: sol.fitness, fills: sol.fills, utilization: sol.utilization, offcut: sol.offcut, scraps: sol.scraps, scrap: sol.scrap, cuts: sol.cuts, cutLines: sol.cutLines, grouping: sol.grouping };
   }
   function publicCtx(ctx) {
     return { sheetW: ctx.sheetW, sheetH: ctx.sheetH, kerf: ctx.kerf, types: ctx.types, nT: ctx.nT, total: ctx.total, unplaceable: ctx.unplaceable };

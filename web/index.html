@@ -285,7 +285,7 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
       <div class="field">
         <span class="step"><b>4</b> Preferences</span>
         <label class="pref" for="prefGroup"><input type="checkbox" id="prefGroup"><span><b>Keep matching boxes together</b><span class="hint">Boxes of the same size go next to each other.</span></span></label>
-        <label class="pref" for="prefCuts" id="prefCutsWrap"><input type="checkbox" id="prefCuts"><span><b>Fewest cuts</b><span class="hint">Favours layouts that are quicker to cut, even if a bit more material is left over.</span></span></label>
+        <label class="pref" for="prefCuts" id="prefCutsWrap"><input type="checkbox" id="prefCuts"><span><b>Fewest cuts</b><span class="hint">Lines boxes up so more of them come free with each straight cut, even if a bit more material is left over.</span></span></label>
       </div>
 
       <div style="display:grid;gap:8px">
@@ -510,7 +510,7 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
   let uid = 0;
   const state = {
     unit: 'in',
-    sheetW: 48 * 25.4, sheetH: 96 * 25.4, kerf: 0.125 * 25.4,
+    sheetW: 48 * 25.4, sheetH: 96 * 25.4, kerf: 0,
     items: [],
     params: { ants: 30, iterations: 150, seed: 7, alpha: 1, beta: 2, evaporation: 0.1, scrapWeight: 2, compact: true },
     result: null,
@@ -523,7 +523,7 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
 
   const PRESETS = {
     cabinet: () => ({
-      unit: 'in', sheetW: 48, sheetH: 96, kerf: 0.125,
+      unit: 'in', sheetW: 48, sheetH: 96, kerf: 0,
       items: [
         ['Side', 23.25, 30, 4], ['Back', 30, 34.5, 2], ['Shelf', 22.5, 11.25, 6],
         ['Drawer front', 15, 6, 8], ['Toe kick', 4, 36, 3], ['Stretcher', 3.5, 28.5, 6],
@@ -534,7 +534,7 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
       items: [['Large', 600, 400, 1], ['Medium', 400, 300, 3], ['Long', 500, 200, 2], ['Small', 300, 200, 5], ['Tiny', 200, 150, 6]],
     }),
     acrylic: () => ({
-      unit: 'mm', sheetW: 1220, sheetH: 2440, kerf: 3,
+      unit: 'mm', sheetW: 1220, sheetH: 2440, kerf: 0,
       items: [['Door sign', 300, 100, 24], ['Menu board', 600, 450, 4], ['Plaque', 250, 200, 12], ['Wayfinding', 900, 150, 6], ['Banner', 1200, 300, 2]],
     }),
     original: () => {
@@ -762,6 +762,17 @@ onmessage = (e) => {
     return e;
   }
 
+  // Cuts on the same straight line are one pass. Number lines in the order they first appear.
+  function cutLineNumbers(cuts) {
+    const ids = new Map();
+    const num = cuts.map((c) => {
+      const v = c.x1 === c.x2, key = (v ? 'v' : 'h') + Math.round((v ? c.x1 : c.y1) * 1e4);
+      if (!ids.has(key)) ids.set(key, ids.size + 1);
+      return ids.get(key);
+    });
+    return { num, count: ids.size };
+  }
+
   // draw a sheet. parts: [{t,x,y,w,h}] in mm. opts: {highlight, ghosts, dim}
   function drawSheet(W, H, parts, labels, opts = {}) {
     const pad = Math.max(W, H) * 0.012;
@@ -827,13 +838,14 @@ onmessage = (e) => {
       });
       if (opts.cutOrder) {
         const r = Math.max(W, H) * 0.014;
+        const { num } = cutLineNumbers(opts.cuts);
         opts.cuts.forEach((c, i) => {
           const len = Math.hypot(c.x2 - c.x1, c.y2 - c.y1);
           if (len < r * 3) return;
           const mx = (c.x1 + c.x2) / 2, my = (c.y1 + c.y2) / 2;
           svgEl('circle', { cx: mx, cy: my, r, fill: 'var(--cut)', stroke: 'var(--sheet)', 'stroke-width': r * 0.18 }, cg);
-          const t = svgEl('text', { x: mx, y: my, 'font-size': r * (i + 1 >= 10 ? 1.0 : 1.25), 'font-weight': 700, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: '#fff' }, cg);
-          t.textContent = String(i + 1);
+          const t = svgEl('text', { x: mx, y: my, 'font-size': r * (num[i] >= 10 ? 1.0 : 1.25), 'font-weight': 700, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: '#fff' }, cg);
+          t.textContent = String(num[i]);
         });
       }
     }
@@ -930,8 +942,9 @@ onmessage = (e) => {
       <div class="stat"><span class="label">Boxes placed</span><b class="num">${placed}<span class="muted" style="font-size:18px"> / ${want}</span></b><span class="d">${want - placed ? `${want - placed} too big for the sheet` : 'all of them fit'}</span></div>
       <div class="stat"><span class="label">Scrap</span><b class="num">${(scrapFrac * 100).toFixed(0)}%</b><span class="d">small gaps between boxes</span></div>`;
     if (res.mode === 'guillotine' || state.mode === 'guillotine') {
-      const cuts = best.sheets.reduce((a, sh) => a + (sh.cuts ? sh.cuts.length : 0), 0);
-      el.insertAdjacentHTML('beforeend', `<div class="stat"><span class="label">Cuts</span><b class="num">${cuts}</b><span class="d">straight, edge to edge</span></div>`);
+      const segs = best.sheets.reduce((a, sh) => a + (sh.cuts ? sh.cuts.length : 0), 0);
+      const lines = best.sheets.reduce((a, sh) => a + (sh.cuts ? cutLineNumbers(sh.cuts).count : 0), 0);
+      el.insertAdjacentHTML('beforeend', `<div class="stat"><span class="label">Cut lines</span><b class="num">${lines}</b><span class="d">${segs} cuts if pieces aren't stacked</span></div>`);
     }
     if (!live) { renderAdvSummary(res, lift, dSheets); renderModeNote(); }
   }
@@ -948,13 +961,13 @@ onmessage = (e) => {
         : (b > a ? ` Guillotine cut would need ${b - a} more sheet${b - a === 1 ? '' : 's'}.` : ` Guillotine cut fits this job on the same ${b} sheet${b === 1 ? '' : 's'}.`);
     }
     $('modeNote').innerHTML = g
-      ? `<span><b>Guillotine cut.</b> Every cut runs straight across the piece from edge to edge, so a guillotine cutter, panel saw or table saw can make it. Dashed lines are the cuts, numbered in order. This can take a little more material.<span class="cmp">${cmp}</span></span>`
+      ? `<span><b>Guillotine cut.</b> Every cut runs straight across the piece from edge to edge, so a guillotine cutter, panel saw or table saw can make it. Dashed lines are the cuts. Cuts that share a number lie on one straight line, so lined-up pieces can be cut in one pass. This can take a little more material.<span class="cmp">${cmp}</span></span>`
       : `<span><b>Free cut.</b> Boxes can go anywhere on the sheet. Best for laser, CNC router or plotter cutting.<span class="cmp">${cmp}</span></span>`;
   }
 
   function renderAdvSummary(res, lift, dSheets) {
     const P = res.params;
-    const extra = `${res.best.grouping != null ? ` ${Math.round(res.best.grouping * 100)}% of repeated boxes touch a matching box.` : ''}${res.mode === 'guillotine' ? ` ${res.best.cuts} cuts in total.` : ''}`;
+    const extra = `${res.best.grouping != null ? ` ${Math.round(res.best.grouping * 100)}% of repeated boxes touch a matching box.` : ''}${res.mode === 'guillotine' ? ` ${res.best.cutLines} cut lines (${res.best.cuts} cuts if pieces aren't stacked).` : ''}`;
     $('advSummary').innerHTML = `Showing the <b>${res.mode === 'guillotine' ? 'guillotine' : 'free'} cut</b> run.${extra} Last run: ${P.ants} ants × ${P.iterations} rounds = ${(P.ants * P.iterations).toLocaleString()} layouts in ${(res.ms / 1000).toFixed(1)} s. ` +
       `Compared with a simple greedy layout, the colony scored <b class="${lift > 0.05 ? 'good' : ''}">${lift >= 0 ? '+' : ''}${lift.toFixed(1)}%</b>${dSheets > 0 ? ` and saved ${dSheets} sheet${dSheets > 1 ? 's' : ''}` : ''}.`;
   }
@@ -983,7 +996,7 @@ onmessage = (e) => {
       card.appendChild(drawSheet(res.ctx.sheetW, res.ctx.sheetH, parts, res.labels, { maxH: Math.round(Math.min(900, Math.max(520, innerHeight * 0.85))), offcut: sh.offcutRect, cuts: sh.cuts, cutOrder: $('showCutOrder').checked }));
       const cap = document.createElement('div');
       cap.className = 'cap';
-      cap.innerHTML = `<span><b>Sheet ${i + 1}</b> · ${sh.parts.length} box${sh.parts.length === 1 ? '' : 'es'}${sh.cuts ? ` · ${sh.cuts.length} cuts` : ''}</span><span class="mono muted">${(best.fills[i] * 100).toFixed(0)}% used</span>`;
+      cap.innerHTML = `<span><b>Sheet ${i + 1}</b> · ${sh.parts.length} box${sh.parts.length === 1 ? '' : 'es'}${sh.cuts ? ` · ${cutLineNumbers(sh.cuts).count} cut lines` : ''}</span><span class="mono muted">${(best.fills[i] * 100).toFixed(0)}% used</span>`;
       card.appendChild(cap);
       const counts = new Map();
       for (const p of parts) counts.set(p.item, (counts.get(p.item) || 0) + 1);
