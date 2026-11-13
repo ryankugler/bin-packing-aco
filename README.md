@@ -75,7 +75,11 @@ Guillotine cutters, panel saws and table saws can only make straight cuts that r
 - **Split direction:** for each box the ant chooses which cut comes first (across, or down). The default rule favours the split whose bigger leftover piece is smaller ("min area"), which leaves less scrap and needs fewer cuts. A second pheromone, per box type and direction, lets the colony learn when to go against the rule.
 - **No sliding:** the slide step is skipped here, because sliding boxes would break the straight cuts.
 - **Boxes stay against edges:** each placement needs 0, 1 or 2 new cuts, depending on whether the box sits flush with the edges of its piece. The heuristic divides η by `1 + 0.5 × new cuts`, so flush placements against the sheet edge or previous cuts are preferred. This avoids boxes floating in the middle of a region, which would need extra trim cuts.
-- **Fewest cuts** (on by default): raises that factor to `1 + 1.5 × new cuts`, subtracts `0.1 × cuts per box` from the score, and cuts the scrap penalty to a quarter. Leftover shape matters much less than how easy the sheet is to cut.
+- **Fewest cuts** (on by default) optimizes for **cut lines**, not cut segments. Cuts that lie on the same straight line can be made in one pass, with pieces stacked or kept aligned on the cutter. With this preference on:
+  - **Placement:** a box may sit anywhere inside a free area, not just its top-left corner, so its edges can land on cut lines already on the sheet. A cut on an existing line is free; only cuts that start a new line count. Left/right and top/bottom positions are chosen independently from the area's edges and the existing lines.
+  - **Heuristic:** η is divided by `1 + 1.5 × new cut lines`.
+  - **Score:** subtracts `0.4 × cut lines per box` and cuts the scrap penalty to a quarter, so leftover shape matters much less than how easy the sheet is to cut.
+  - **Cut numbers:** on the sheet they go by line, so segments you'd cut in one pass share a number. The summary shows cut lines plus the plain cut count.
 
 On the 21 test jobs, guillotine layouts need 81 sheets against 79 for free cut. With a fixed split rule and no learning they needed 83. Every result is checked by an independent test that recursively splits the layout with edge-to-edge cuts. Guillotine mode is in the web app only; the Python solver supports free cut.
 
@@ -89,15 +93,21 @@ This preference is on by default and works in both modes.
 
 On the 21 test jobs, averaged over two seeds:
 
-| Setting | Sheets | Cuts per box | Boxes next to a match |
+| Setting | Sheets | Cut lines per box | Boxes next to a match |
 |---|---|---|---|
 | Free cut | 79 | — | 81% |
 | Free cut + keep matching together | 79 | — | 94% |
-| Guillotine (before) | 81 | 1.53 | 83% |
-| Guillotine + edge preference | 80.5 | 1.52 | 83% |
-| Guillotine + fewest cuts + keep matching together | 80 | 1.41 | 94% |
+| Guillotine + keep matching together | 80 | 1.30 | 92% |
+| Guillotine + fewest cuts (counting segments, previous version) | 80 | 1.29 | 95% |
+| **Guillotine + fewest cuts (lining up cuts, current)** | **82** | **1.18** | 92% |
 
-On the cabinet example, guillotine went from 47 cuts to 38. The defaults are now 30 ants × 150 rounds (was 20 × 80). That costs about 1 s on the cabinet job and gives slightly less scrap and fewer cuts.
+On the cabinet example plus four 12 × 9 boxes, guillotine needs 36 cut lines with Fewest cuts off and 33 with it on. Same-width boxes such as the stretchers stand in lined-up columns that share their cut lines.
+
+What was tried and dropped:
+- **Strip-first decoder** (cut full-length strips, then shelves): needed 83 sheets for about the same cut lines.
+- **Score weight on cut lines:** at 0.1 it barely mattered; at 1.0 it needed 89.5 sheets and gave more lines, not fewer. 0.4 is the default.
+
+The defaults are 30 ants × 150 rounds, and blade width (kerf) defaults to 0.
 
 ### Learning (MAX-MIN Ant System)
 
