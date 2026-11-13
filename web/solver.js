@@ -241,11 +241,52 @@ function ACOSolverModule() {
     return p;
   }
 
-  function heuristic(ctx, t, p) {
+  // true if rects a and b (kerf-inflated) share part of an edge
+  function touching(a, b) {
+    const ov = (a1, a2, b1, b2) => Math.min(a2, b2) - Math.max(a1, b1) > EPS;
+    return ((Math.abs(a.x + a.w - b.x) <= 1e-6 || Math.abs(b.x + b.w - a.x) <= 1e-6) && ov(a.y, a.y + a.h, b.y, b.y + b.h)) ||
+      ((Math.abs(a.y + a.h - b.y) <= 1e-6 || Math.abs(b.y + b.h - a.y) <= 1e-6) && ov(a.x, a.x + a.w, b.x, b.x + b.w));
+  }
+
+  function heuristic(ctx, t, p, sheet, prev) {
     const ty = ctx.types[t];
     const area = ty.ew * ty.eh;
     const snug = area / p.freeArea;
-    return (area / ctx.maxArea) * (0.2 + 0.8 * snug);
+    let eta = (area / ctx.maxArea) * (0.2 + 0.8 * snug);
+    const P = ctx.P;
+    // Guillotine: each placement needs 0, 1 or 2 new cuts depending on how flush it sits.
+    // Flush placements keep boxes against edges and previous cuts, so they're favoured.
+    if (P.cutMode === 'guillotine') {
+      const cutsAdded = (p.s1 > EPS ? 1 : 0) + (p.s2 > EPS ? 1 : 0);
+      eta /= 1 + (0.5 + (P.cutWeight || 0)) * cutsAdded;
+    }
+    // Grouping: favour repeating the last box type and landing next to a box of the same type.
+    const g = P.groupWeight || 0;
+    if (g) {
+      let near = false;
+      const k = ctx.kerf;
+      for (const q of sheet.parts) {
+        if (q.t !== t) continue;
+        if (touching({ x: p.x, y: p.y, w: p.w, h: p.h }, { x: q.x, y: q.y, w: q.w + k, h: q.h + k })) { near = true; break; }
+      }
+      eta *= 1 + 2 * g * (near ? 1 : 0) + g * (t === prev ? 1 : 0);
+    }
+    return eta;
+  }
+
+  // Share of boxes (of types with 2+ copies) that touch another box of the same type.
+  function groupScore(ctx, sheets) {
+    let n = 0, good = 0;
+    const k = ctx.kerf;
+    for (const s of sheets) {
+      const R = s.parts.map((q) => ({ t: q.t, x: q.x, y: q.y, w: q.w + k, h: q.h + k }));
+      for (const a of R) {
+        if (ctx.types[a.t].qty < 2) continue;
+        n++;
+        if (R.some((b) => b !== a && b.t === a.t && touching(a, b))) good++;
+      }
+    }
+    return n ? good / n : 1;
   }
 
   function evaluate(ctx, sheets) {
@@ -261,12 +302,21 @@ function ACOSolverModule() {
       for (const p of s.parts) used += (p.w + ctx.kerf) * (p.h + ctx.kerf);
       return Math.max(0, (A - used - largestFree(s)) / A);
     });
-    const mu = ctx.P.scrapWeight || 0;
+    const P = ctx.P;
+    const guillotine = P.cutMode === 'guillotine';
+    const cw = guillotine ? P.cutWeight || 0 : 0;
+    // when optimizing for easy cuts, leftover shape matters much less
+    const mu = (P.scrapWeight || 0) * (cw ? 0.25 : 1);
     let f = 0;
     for (let i = 0; i < N; i++) f += fills[i] * fills[i] - mu * scraps[i];
     f = f / N + (0.1 * offcut) / N;
+    const nParts = sheets.reduce((a, s) => a + s.parts.length, 0) || 1;
+    const cuts = guillotine ? sheets.reduce((a, s) => a + s.cuts.length, 0) : 0;
+    if (cw) f -= 0.1 * cw * (cuts / nParts);
+    const grouping = groupScore(ctx, sheets);
+    if (P.groupWeight) f += 0.25 * P.groupWeight * grouping;
     const utilization = fills.reduce((a, b) => a + b, 0) / N;
-    return { fitness: f, fills, utilization, offcut, scraps, scrap: scraps.reduce((a, b) => a + b, 0) / N };
+    return { fitness: f, fills, utilization, offcut, scraps, scrap: scraps.reduce((a, b) => a + b, 0) / N, cuts, grouping };
   }
 
   /*
@@ -294,7 +344,7 @@ function ACOSolverModule() {
         if (!cnt[t]) continue;
         const p = placementFor(ctx, cur, t);
         if (!p) continue;
-        const eta = heuristic(ctx, t, p);
+        const eta = heuristic(ctx, t, p, cur, prev);
         const tv = tau ? tau[prev * nT + t] : 1;
         const w = mode === 'greedy' ? eta : Math.pow(tv, P.alpha) * Math.pow(eta, P.beta);
         cands.push({ t, p, eta, tau: tv, w });
@@ -358,7 +408,7 @@ function ACOSolverModule() {
     };
   }
 
-  const DEFAULTS = { ants: 20, iterations: 80, alpha: 1, beta: 2, evaporation: 0.1, seed: 7, restartAfter: 25, tauSpread: 2, scrapWeight: 2, compact: true, cutMode: 'free', splitRule: 'minarea', learnSplit: true, splitBias: 0.6 };
+  const DEFAULTS = { ants: 30, iterations: 150, alpha: 1, beta: 2, evaporation: 0.1, seed: 7, restartAfter: 25, tauSpread: 2, scrapWeight: 2, compact: true, cutMode: 'free', splitRule: 'minarea', learnSplit: true, splitBias: 0.6, groupWeight: 0, cutWeight: 0 };
 
   function solve(input, onProgress) {
     const P = Object.assign({}, DEFAULTS, input.params || {});
@@ -472,7 +522,7 @@ function ACOSolverModule() {
   }
 
   function strip(sol) {
-    return { sheets: sol.sheets, fitness: sol.fitness, fills: sol.fills, utilization: sol.utilization, offcut: sol.offcut, scraps: sol.scraps, scrap: sol.scrap };
+    return { sheets: sol.sheets, fitness: sol.fitness, fills: sol.fills, utilization: sol.utilization, offcut: sol.offcut, scraps: sol.scraps, scrap: sol.scrap, cuts: sol.cuts, grouping: sol.grouping };
   }
   function publicCtx(ctx) {
     return { sheetW: ctx.sheetW, sheetH: ctx.sheetH, kerf: ctx.kerf, types: ctx.types, nT: ctx.nT, total: ctx.total, unplaceable: ctx.unplaceable };

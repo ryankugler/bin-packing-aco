@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>SheetFit</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="theme-color" content="#1d6b52">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -127,6 +129,11 @@ button { font: inherit; }
   .box-head > :nth-child(3) { grid-area: w; } .box-head > :nth-child(4) { grid-area: h; }
   .box-head > :nth-child(5) { grid-area: q; } .box-head > :nth-child(6) { grid-area: rot; }
 }
+.pref { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px; cursor: pointer; }
+.pref:hover { border-color: var(--muted); }
+.pref input { width: 16px; height: 16px; accent-color: var(--accent); margin: 2px 0 0; flex: none; }
+.pref > span { display: grid; gap: 1px; font-size: 13px; }
+.pref b { font-weight: 600; }
 .rot-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 4px; width: 100%; padding: 5px 4px; border-radius: 4px; font: 600 11.5px var(--f-body); cursor: pointer; border: 1px solid var(--line); background: transparent; color: var(--muted); white-space: nowrap; }
 .rot-toggle[aria-pressed=true] { background: color-mix(in oklab, var(--accent) 14%, transparent); border-color: color-mix(in oklab, var(--accent) 55%, transparent); color: var(--accent); }
 .rot-toggle:hover { border-color: var(--muted); }
@@ -273,6 +280,12 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
         </div>
         <p class="hint"><b>Can turn</b> lets SheetFit rotate a box 90° when that fits better. Click it to switch to <b>Fixed</b> when the grain or print direction matters.</p>
         <div class="err" id="formErr" hidden></div>
+      </div>
+
+      <div class="field">
+        <span class="step"><b>4</b> Preferences</span>
+        <label class="pref" for="prefGroup"><input type="checkbox" id="prefGroup"><span><b>Keep matching boxes together</b><span class="hint">Boxes of the same size go next to each other.</span></span></label>
+        <label class="pref" for="prefCuts" id="prefCutsWrap"><input type="checkbox" id="prefCuts"><span><b>Fewest cuts</b><span class="hint">Favours layouts that are quicker to cut, even if a bit more material is left over.</span></span></label>
       </div>
 
       <div style="display:grid;gap:8px">
@@ -436,6 +449,7 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
       <li><b>Enter your sheet size.</b> If you're cutting, set the gap to your saw blade's width so every box comes out full size.</li>
       <li><b>List your boxes.</b> Give each size a name, its width and height, and how many you need. Set <b>Rotation</b> to <i>Can turn</i> or <i>Fixed</i>.</li>
       <li><b>Pick how you'll cut.</b> <i>Free cut</i> (the default) lets boxes go anywhere, for laser, CNC or plotter cutters. <i>Guillotine cut</i> only uses straight cuts that run edge to edge, for guillotine cutters, panel saws and table saws.</li>
+      <li><b>Set your preferences.</b> <i>Keep matching boxes together</i> puts same-size boxes side by side. On the guillotine tab, <i>Fewest cuts</i> favours layouts that are quicker to cut.</li>
       <li><b>Press Find best layout.</b> You'll see each sheet with every box drawn in place. The hatched area is the leftover piece you can cut off and keep.</li>
     </ol>
     <p class="hint">Not sure where to start? Pick one of the examples under the button. Curious how the layout was chosen? The Advanced tab shows the algorithm's work step by step.</p>
@@ -498,9 +512,10 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
     unit: 'in',
     sheetW: 48 * 25.4, sheetH: 96 * 25.4, kerf: 0.125 * 25.4,
     items: [],
-    params: { ants: 20, iterations: 80, seed: 7, alpha: 1, beta: 2, evaporation: 0.1, scrapWeight: 2, compact: true },
+    params: { ants: 30, iterations: 150, seed: 7, alpha: 1, beta: 2, evaporation: 0.1, scrapWeight: 2, compact: true },
     result: null,
     results: { free: null, guillotine: null },
+    prefs: { group: true, fewestCuts: true },
     mode: 'free',
     live: null,
     running: false,
@@ -612,6 +627,7 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
     $('pAnts').value = P.ants; $('pIters').value = P.iterations; $('pSeed').value = P.seed;
     $('pAlpha').value = P.alpha; $('pBeta').value = P.beta; $('pEvap').value = P.evaporation;
     $('pScrap').value = P.scrapWeight; $('pCompact').checked = !!P.compact;
+    $('prefGroup').checked = state.prefs.group; $('prefCuts').checked = state.prefs.fewestCuts;
     validate();
   }
 
@@ -673,12 +689,12 @@ onmessage = (e) => {
     return {
       sheetW: state.sheetW, sheetH: state.sheetH, kerf: state.kerf,
       items: state.items.map((it) => ({ w: it.w, h: it.h, qty: it.qty, rotate: it.rotate, label: it.label || 'Box' })),
-      params: { ...state.params, cutMode: state.mode },
+      params: { ...state.params, cutMode: state.mode, groupWeight: state.prefs.group ? 1 : 0, cutWeight: state.mode === 'guillotine' && state.prefs.fewestCuts ? 1 : 0 },
     };
   }
   // same job and settings, ignoring which cut mode
   function jobSig(input) {
-    const { cutMode, ...rest } = input.params;
+    const { cutMode, cutWeight, ...rest } = input.params;
     return JSON.stringify([input.sheetW, input.sheetH, input.kerf, input.items, rest]);
   }
 
@@ -938,7 +954,8 @@ onmessage = (e) => {
 
   function renderAdvSummary(res, lift, dSheets) {
     const P = res.params;
-    $('advSummary').innerHTML = `Showing the <b>${res.mode === 'guillotine' ? 'guillotine' : 'free'} cut</b> run. Last run: ${P.ants} ants × ${P.iterations} rounds = ${(P.ants * P.iterations).toLocaleString()} layouts in ${(res.ms / 1000).toFixed(1)} s. ` +
+    const extra = `${res.best.grouping != null ? ` ${Math.round(res.best.grouping * 100)}% of repeated boxes touch a matching box.` : ''}${res.mode === 'guillotine' ? ` ${res.best.cuts} cuts in total.` : ''}`;
+    $('advSummary').innerHTML = `Showing the <b>${res.mode === 'guillotine' ? 'guillotine' : 'free'} cut</b> run.${extra} Last run: ${P.ants} ants × ${P.iterations} rounds = ${(P.ants * P.iterations).toLocaleString()} layouts in ${(res.ms / 1000).toFixed(1)} s. ` +
       `Compared with a simple greedy layout, the colony scored <b class="${lift > 0.05 ? 'good' : ''}">${lift >= 0 ? '+' : ''}${lift.toFixed(1)}%</b>${dSheets > 0 ? ` and saved ${dSheets} sheet${dSheets > 1 ? 's' : ''}` : ''}.`;
   }
 
@@ -1155,6 +1172,7 @@ onmessage = (e) => {
     const changed = state.mode !== mode;
     state.mode = mode;
     $('cutOrderWrap').hidden = mode !== 'guillotine';
+    $('prefCutsWrap').hidden = mode !== 'guillotine';
     const cached = state.results[mode];
     if (cached && cached.sig === jobSig(jobInput())) {
       state.result = cached;
@@ -1192,6 +1210,8 @@ onmessage = (e) => {
       showTab(next, true);
     };
   }
+  $('prefGroup').onchange = (e) => { state.prefs.group = e.target.checked; run(); };
+  $('prefCuts').onchange = (e) => { state.prefs.fewestCuts = e.target.checked; state.results.guillotine = null; run(); };
   $('showCutOrder').onchange = () => { if (state.result) renderSheets(state.result, state.result.best); };
   addEventListener('hashchange', () => showTab(location.hash.slice(1)));
 

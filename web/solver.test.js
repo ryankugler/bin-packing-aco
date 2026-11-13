@@ -39,6 +39,7 @@ function check(input, res) {
     for (const p of s.parts) assert(o.x + o.w + k <= p.x + 1e-6 || p.x + p.w + k <= o.x + 1e-6 || o.y + o.h + k <= p.y + 1e-6 || p.y + p.h + k <= o.y + 1e-6, 'offcut overlaps a box');
   }
   assert(res.best.fitness >= res.greedy.fitness, 'never worse than greedy');
+  assert(res.best.grouping >= 0 && res.best.grouping <= 1, 'grouping score is a share');
   if (input.params && input.params.cutMode === 'guillotine') {
     for (const s of res.best.sheets) {
       assert(isGuillotine(s.parts.map((p) => ({ x: p.x, y: p.y, w: p.w + k, h: p.h + k }))), 'layout can be cut with edge-to-edge cuts');
@@ -64,8 +65,15 @@ const cases = {
   'random multi-sheet': { sheetW: 100, sheetH: 60, kerf: 0.3, items: Array.from({ length: 10 }, () => ({ w: ri(5, 40), h: ri(5, 40), qty: ri(1, 12), rotate: rng() < 0.7 })) },
   'single type': { sheetW: 10, sheetH: 10, kerf: 0, items: [{ w: 3, h: 2, qty: 30, rotate: true }] },
 };
-for (const [name, base] of Object.entries(cases)) for (const cutMode of ['free', 'guillotine']) {
-  const input = { ...base, params: { iterations: 30, cutMode } };
+const modes = {
+  free: { cutMode: 'free' },
+  guillotine: { cutMode: 'guillotine' },
+  'free + grouping': { cutMode: 'free', groupWeight: 1 },
+  'guillotine + fewest cuts + grouping': { cutMode: 'guillotine', cutWeight: 1, groupWeight: 1 },
+};
+for (const [name, base] of Object.entries(cases)) for (const [label, mode] of Object.entries(modes)) {
+  const cutMode = label;
+  const input = { ...base, params: { iterations: 30, ants: 20, ...mode } };
   const res = M.solve(input);
   check(input, res);
   console.log(`ok  ${name} [${cutMode}]: ${res.best.sheets.length} sheet(s), ${(res.best.utilization * 100).toFixed(1)}% used (greedy score ${res.greedy.fitness.toFixed(4)} -> ACO ${res.best.fitness.toFixed(4)})`);
