@@ -134,6 +134,8 @@ button { font: inherit; }
 .pref input { width: 16px; height: 16px; accent-color: var(--accent); margin: 2px 0 0; flex: none; }
 .pref > span { display: grid; gap: 1px; font-size: 13px; }
 .pref b { font-weight: 600; }
+.export-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.export-bar .btn:disabled { opacity: .5; cursor: not-allowed; }
 .rot-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 4px; width: 100%; padding: 5px 4px; border-radius: 4px; font: 600 11.5px var(--f-body); cursor: pointer; border: 1px solid var(--line); background: transparent; color: var(--muted); white-space: nowrap; }
 .rot-toggle[aria-pressed=true] { background: color-mix(in oklab, var(--accent) 14%, transparent); border-color: color-mix(in oklab, var(--accent) 55%, transparent); color: var(--accent); }
 .rot-toggle:hover { border-color: var(--muted); }
@@ -314,9 +316,16 @@ dialog#help::backdrop { background: rgba(10, 16, 13, .5); }
       <section class="panel" aria-labelledby="hSheets">
         <div class="section-head">
           <h2 id="hSheets">Your layout</h2>
+          <div class="export-bar" role="group" aria-label="Export layout">
+            <span class="hint">Export</span>
+            <button class="btn small" id="exportPdf" type="button">PDF</button>
+            <button class="btn small" id="exportXlsx" type="button">Excel</button>
+            <button class="btn small" id="exportCsv" type="button">CSV</button>
+          </div>
           <label class="hint" id="cutOrderWrap" hidden style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="showCutOrder" checked style="accent-color:var(--accent)"> Number the cuts</label>
           <p class="hint">Hover or tap a box to see its size and position from the sheet's top-left corner. The hatched area on each sheet is the biggest leftover piece you can cut off and keep.</p>
         </div>
+        <p class="hint" id="exportStatus" role="status" hidden></p>
         <div class="legend" id="typeLegend"></div>
         <div class="sheets" id="sheets"><div class="empty">Add your boxes, then press Find best layout.</div></div>
       </section>
@@ -709,6 +718,7 @@ onmessage = (e) => {
     const mode = state.mode;
     const input = jobInput();
     const labels = state.items.map((it) => it.label || 'Box');
+    setExportEnabled(false);
     $('run').textContent = 'Working…';
     $('runAdv').disabled = true;
     $('run').disabled = true;
@@ -731,6 +741,7 @@ onmessage = (e) => {
         state.result = result;
         $('run').textContent = 'Find best layout';
         $('runAdv').disabled = false;
+        setExportEnabled(true);
         $('prog').style.width = '100%';
         $('status').textContent = `Done. Tried ${(input.params.ants * input.params.iterations).toLocaleString()} layouts in ${(state.result.ms / 1000).toFixed(1)} s and kept the best.`;
         $('statusAdv').textContent = 'Done.';
@@ -1178,6 +1189,273 @@ onmessage = (e) => {
       if (state.result && !state.running) renderConv(state.result.history, state.result.greedy.fitness, state.result.params.iterations, state.result.restarts, state.result.bestIter);
     }, 120);
   }).observe($('convChart'));
+
+  // ---------- export (PDF, Excel, CSV) ----------
+  // Libraries load from cdnjs the first time someone exports, so normal page loads stay light.
+  const LIBS = {
+    jspdf: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+    autotable: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js',
+    xlsx: 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
+  };
+  const libPromises = {};
+  function loadLib(src) {
+    if (!libPromises[src]) {
+      libPromises[src] = new Promise((resolve, reject) => {
+        const el = document.createElement('script');
+        el.src = src;
+        el.onload = resolve;
+        el.onerror = () => { delete libPromises[src]; reject(new Error('the export library could not be downloaded')); };
+        document.head.appendChild(el);
+      });
+    }
+    return libPromises[src];
+  }
+  // light palette, so exports look the same whatever theme the page is in
+  const PRINT_COLORS = ['#6b9bd1', '#e39a5b', '#7cb98a', '#c97fb4', '#d8c157', '#64b8b4', '#b98a6a', '#9a8fd6', '#d9787a', '#8fb45a'];
+
+  function setExportEnabled(on) {
+    for (const id of ['exportPdf', 'exportXlsx', 'exportCsv']) $(id).disabled = !on;
+  }
+  function exportMsg(text, isError) {
+    const el = $('exportStatus');
+    el.hidden = !text;
+    el.textContent = text || '';
+    el.classList.toggle('err', !!isError);
+  }
+
+  // Everything an export needs, in the unit currently shown on the page. No algorithm details.
+  function exportData() {
+    const res = state.result, unit = state.unit, f = UNITS[unit];
+    const types = res.ctx.types;
+    const num = (mm) => +(mm / f).toFixed(4);
+    const txt = (mm) => fmtLen(mm, unit);
+    const nameOf = (t) => res.labels[types[t].item] || 'Box';
+    const guillotine = res.mode === 'guillotine';
+    const sheetA = res.ctx.sheetW * res.ctx.sheetH;
+    const pieces = [];
+    const sheets = res.best.sheets.map((sh, si) => {
+      const list = sh.parts.map((p) => {
+        const row = { sheet: si + 1, n: pieces.length + 1, name: nameOf(p.t), t: p.t, item: types[p.t].item, x: p.x, y: p.y, w: p.w, h: p.h, rot: !!p.rot };
+        pieces.push(row);
+        return row;
+      });
+      let cuts = [];
+      if (sh.cuts) {
+        const { num: lineNo } = cutLineNumbers(sh.cuts);
+        cuts = sh.cuts.map((c, i) => {
+          const v = c.x1 === c.x2;
+          return { line: lineNo[i], dir: v ? 'Vertical' : 'Horizontal', at: v ? c.x1 : c.y1, from: v ? Math.min(c.y1, c.y2) : Math.min(c.x1, c.x2), to: v ? Math.max(c.y1, c.y2) : Math.max(c.x1, c.x2), raw: c };
+        });
+      }
+      const offcut = sh.offcutRect || null;
+      return { index: si + 1, pieces: list, fill: res.best.fills[si], cuts, cutLines: sh.cuts ? cutLineNumbers(sh.cuts).count : 0, offcut, offcutShare: offcut ? (offcut.w * offcut.h) / sheetA : 0 };
+    });
+    const cutList = types.map((ty, t) => {
+      const placed = pieces.filter((p) => p.t === t);
+      return { name: nameOf(t), item: ty.item, w: ty.w, h: ty.h, qty: ty.qty, rotate: !!state.items[ty.item]?.rotate, onSheets: [...new Set(placed.map((p) => p.sheet))].join(', ') };
+    });
+    const offFrac = sheets.reduce((a, s) => a + s.offcutShare, 0) / (sheets.length || 1);
+    const want = res.input.items.reduce((a, it) => a + it.qty, 0);
+    return {
+      unit, num, txt, guillotine, sheets, pieces, cutList,
+      notPlaced: res.ctx.unplaceable.map((u) => ({ name: u.label || 'Box', w: u.w, h: u.h, qty: u.qty })),
+      sheetW: res.ctx.sheetW, sheetH: res.ctx.sheetH, kerf: res.ctx.kerf,
+      summary: [
+        ['Cutting method', guillotine ? 'Guillotine cut (straight edge-to-edge cuts)' : 'Free cut (laser, CNC or plotter)'],
+        ['Sheet size', `${txt(res.ctx.sheetW)} × ${txt(res.ctx.sheetH)} ${unit}`],
+        ['Gap between boxes (blade width)', `${txt(res.ctx.kerf)} ${unit}`],
+        ['Sheets needed', String(sheets.length)],
+        ['Boxes placed', `${pieces.length} of ${want}`],
+        ['Material used', `${(res.best.utilization * 100).toFixed(1)}%`],
+        ['Reusable offcuts', `${(offFrac * 100).toFixed(1)}%`],
+        ['Scrap', `${(Math.max(0, 1 - res.best.utilization - offFrac) * 100).toFixed(1)}%`],
+        ...(guillotine ? [['Cut lines', String(sheets.reduce((a, s) => a + s.cutLines, 0))], ['Cuts if pieces are not stacked', String(sheets.reduce((a, s) => a + s.cuts.length, 0))]] : []),
+        ['Created', new Date().toLocaleString()],
+      ],
+    };
+  }
+
+  function fileStem() {
+    const d = new Date(), pad = (n) => String(n).padStart(2, '0');
+    return `sheetfit-${state.result.mode === 'guillotine' ? 'guillotine' : 'free-cut'}-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+
+  function saveBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
+  // one row per piece; the same table appears in the Excel export
+  function pieceRows(D) {
+    const head = ['Sheet', 'Piece', 'Name', `Width (${D.unit})`, `Height (${D.unit})`, `X from left (${D.unit})`, `Y from top (${D.unit})`, 'Rotated', 'Size'];
+    const rows = D.pieces.map((p) => [p.sheet, p.n, p.name, D.num(p.w), D.num(p.h), D.num(p.x), D.num(p.y), p.rot ? 'Yes' : 'No', `${D.txt(p.w)} × ${D.txt(p.h)} ${D.unit}`]);
+    return [head, ...rows];
+  }
+
+  function exportCsv() {
+    const D = exportData();
+    const esc = (v) => { const t = String(v); return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+    const csv = pieceRows(D).map((r) => r.map(esc).join(',')).join('\r\n');
+    saveBlob(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }), `${fileStem()}.csv`); // BOM so Excel reads × correctly
+  }
+
+  async function exportXlsx() {
+    await loadLib(LIBS.xlsx);
+    const D = exportData();
+    const X = window.XLSX;
+    const wb = X.utils.book_new();
+    const add = (name, aoa, widths) => {
+      const ws = X.utils.aoa_to_sheet(aoa);
+      ws['!cols'] = widths.map((w) => ({ wch: w }));
+      X.utils.book_append_sheet(wb, ws, name);
+    };
+    add('Summary', [['SheetFit cut plan', ''], ...D.summary], [34, 46]);
+    add('Cut list', [['Name', `Width (${D.unit})`, `Height (${D.unit})`, 'Quantity', 'Can rotate', 'On sheets'],
+      ...D.cutList.map((c) => [c.name, D.num(c.w), D.num(c.h), c.qty, c.rotate ? 'Yes' : 'No', c.onSheets])], [22, 12, 12, 10, 11, 14]);
+    add('Pieces', pieceRows(D), [7, 7, 22, 12, 12, 15, 15, 9, 22]);
+    add('Sheets', [['Sheet', 'Boxes', 'Material used', `Offcut width (${D.unit})`, `Offcut height (${D.unit})`, ...(D.guillotine ? ['Cut lines'] : [])],
+      ...D.sheets.map((s) => [s.index, s.pieces.length, +(s.fill * 100).toFixed(1) + '%', s.offcut ? D.num(s.offcut.w) : '', s.offcut ? D.num(s.offcut.h) : '', ...(D.guillotine ? [s.cutLines] : [])])], [8, 8, 14, 18, 18, 10]);
+    if (D.guillotine) {
+      add('Cuts', [['Sheet', 'Cut line', 'Direction', `At (${D.unit})`, `From (${D.unit})`, `To (${D.unit})`],
+        ...D.sheets.flatMap((s) => s.cuts.map((c) => [s.index, c.line, c.dir, D.num(c.at), D.num(c.from), D.num(c.to)]))], [8, 9, 12, 12, 12, 12]);
+    }
+    if (D.notPlaced.length) {
+      add('Not placed', [['Name', `Width (${D.unit})`, `Height (${D.unit})`, 'Quantity', 'Reason'],
+        ...D.notPlaced.map((u) => [u.name, D.num(u.w), D.num(u.h), u.qty, 'Larger than the sheet'])], [22, 12, 12, 10, 24]);
+    }
+    X.writeFile(wb, `${fileStem()}.xlsx`);
+  }
+
+  async function exportPdf() {
+    await loadLib(LIBS.jspdf);
+    await loadLib(LIBS.autotable);
+    const D = exportData();
+    const { jsPDF } = window.jspdf;
+    const imperial = D.unit === 'in' || D.unit === 'ft';
+    const doc = new jsPDF({ unit: 'pt', format: imperial ? 'letter' : 'a4' });
+    const PW = doc.internal.pageSize.getWidth(), PH = doc.internal.pageSize.getHeight(), M = 40;
+    const ACCENT = [29, 107, 82], INK = [24, 34, 29], MUTED = [90, 106, 98];
+    const table = (opts) => doc.autoTable({ theme: 'grid', styles: { fontSize: 8.5, cellPadding: 4, textColor: INK }, headStyles: { fillColor: ACCENT, textColor: 255 }, margin: { left: M, right: M }, ...opts });
+
+    // page 1: summary and cut list
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...INK);
+    doc.text('SheetFit cut plan', M, M + 8);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...MUTED);
+    doc.text(D.summary[0][1], M, M + 26);
+    table({ startY: M + 40, body: D.summary, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 190 } } });
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...INK);
+    let y = doc.lastAutoTable.finalY + 26;
+    doc.text('Cut list', M, y);
+    table({ startY: y + 8, head: [['Name', 'Size', 'Quantity', 'Can rotate', 'On sheets']],
+      body: D.cutList.map((c) => [c.name, `${D.txt(c.w)} × ${D.txt(c.h)} ${D.unit}`, c.qty, c.rotate ? 'Yes' : 'No', c.onSheets]) });
+    if (D.notPlaced.length) {
+      y = doc.lastAutoTable.finalY + 26;
+      doc.text('Not placed (larger than the sheet)', M, y);
+      table({ startY: y + 8, head: [['Name', 'Size', 'Quantity']], body: D.notPlaced.map((u) => [u.name, `${D.txt(u.w)} × ${D.txt(u.h)} ${D.unit}`, u.qty]) });
+    }
+
+    // one page per sheet: drawing, then its pieces (and cuts for guillotine)
+    for (const sh of D.sheets) {
+      doc.addPage();
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...INK);
+      doc.text(`Sheet ${sh.index} of ${D.sheets.length}`, M, M + 6);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...MUTED);
+      const bits = [`${D.txt(D.sheetW)} × ${D.txt(D.sheetH)} ${D.unit}`, `${sh.pieces.length} boxes`, `${(sh.fill * 100).toFixed(0)}% used`];
+      if (D.guillotine) bits.push(`${sh.cutLines} cut lines`);
+      if (sh.offcut) bits.push(`offcut ${D.txt(sh.offcut.w)} × ${D.txt(sh.offcut.h)} ${D.unit}`);
+      doc.text(bits.join('  ·  '), M, M + 22);
+
+      const areaW = PW - 2 * M, areaH = PH * 0.52;
+      const sc = Math.min(areaW / D.sheetW, areaH / D.sheetH);
+      const ox = M + (areaW - D.sheetW * sc) / 2, oy = M + 36;
+      const X = (v) => ox + v * sc, Y = (v) => oy + v * sc;
+      doc.setLineDashPattern([], 0);
+      doc.setDrawColor(...MUTED); doc.setLineWidth(0.8); doc.setFillColor(236, 240, 234);
+      doc.rect(X(0), Y(0), D.sheetW * sc, D.sheetH * sc, 'FD');
+      if (sh.offcut) {
+        const o = sh.offcut;
+        doc.setDrawColor(...MUTED); doc.setLineWidth(0.6); doc.setLineDashPattern([3, 2], 0); doc.setFillColor(248, 250, 247);
+        doc.rect(X(o.x), Y(o.y), o.w * sc, o.h * sc, 'FD');
+        doc.setLineDashPattern([], 0);
+        const fs = Math.min(9, o.h * sc * 0.3);
+        if (fs >= 5 && doc.setFontSize(fs) && doc.getTextWidth('Offcut') < o.w * sc - 4) {
+          doc.setTextColor(...MUTED); doc.text('Offcut', X(o.x + o.w / 2), Y(o.y + o.h / 2), { align: 'center', baseline: 'middle' });
+        }
+      }
+      for (const p of sh.pieces) {
+        doc.setFillColor(PRINT_COLORS[p.item % 10]); doc.setDrawColor(40, 50, 45); doc.setLineWidth(0.5);
+        doc.rect(X(p.x), Y(p.y), p.w * sc, p.h * sc, 'FD');
+        const wpt = p.w * sc, hpt = p.h * sc, dims = `${D.txt(p.w)} × ${D.txt(p.h)}`;
+        // piece number in the corner, matching the table below the drawing
+        if (wpt > 14 && hpt > 10) {
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(5.5); doc.setTextColor(...MUTED);
+          doc.text(String(p.n), X(p.x) + 2, Y(p.y) + 2, { baseline: 'top' });
+        }
+        let fs = Math.min(10, hpt * 0.28, wpt * 0.2);
+        doc.setTextColor(...INK);
+        if (fs >= 4.5) {
+          doc.setFontSize(fs);
+          const showName = hpt > fs * 2.8 && doc.getTextWidth(p.name) < wpt - 4;
+          if (doc.getTextWidth(dims) < wpt - 4) {
+            if (showName) {
+              doc.setFont('helvetica', 'bold'); doc.text(p.name, X(p.x + p.w / 2), Y(p.y + p.h / 2) - fs * 0.6, { align: 'center', baseline: 'middle' });
+              doc.setFont('helvetica', 'normal'); doc.text(dims, X(p.x + p.w / 2), Y(p.y + p.h / 2) + fs * 0.6, { align: 'center', baseline: 'middle' });
+            } else {
+              doc.text(dims, X(p.x + p.w / 2), Y(p.y + p.h / 2), { align: 'center', baseline: 'middle' });
+            }
+          } else if (doc.getTextWidth(String(p.n)) < wpt - 2) {
+            doc.text(String(p.n), X(p.x + p.w / 2), Y(p.y + p.h / 2), { align: 'center', baseline: 'middle' }); // piece number, see table
+          }
+        }
+      }
+      if (sh.cuts.length) {
+        doc.setDrawColor(194, 65, 12); doc.setLineWidth(1); doc.setLineDashPattern([4, 2.5], 0);
+        for (const c of sh.cuts) doc.line(X(c.raw.x1), Y(c.raw.y1), X(c.raw.x2), Y(c.raw.y2));
+        doc.setLineDashPattern([], 0);
+        const r = 5.5;
+        for (const c of sh.cuts) {
+          const len = Math.hypot(c.raw.x2 - c.raw.x1, c.raw.y2 - c.raw.y1) * sc;
+          if (len < r * 3) continue;
+          const mx = X((c.raw.x1 + c.raw.x2) / 2), my = Y((c.raw.y1 + c.raw.y2) / 2);
+          doc.setFillColor(194, 65, 12); doc.circle(mx, my, r, 'F');
+          doc.setTextColor(255); doc.setFont('helvetica', 'bold'); doc.setFontSize(c.line >= 10 ? 5.5 : 6.5);
+          doc.text(String(c.line), mx, my, { align: 'center', baseline: 'middle' });
+        }
+        doc.setFont('helvetica', 'normal');
+      }
+
+      table({ startY: oy + D.sheetH * sc + 18, head: [['Piece', 'Name', 'Size', 'X from left', 'Y from top', 'Rotated']],
+        body: sh.pieces.map((p) => [p.n, p.name, `${D.txt(p.w)} × ${D.txt(p.h)} ${D.unit}`, `${D.txt(p.x)} ${D.unit}`, `${D.txt(p.y)} ${D.unit}`, p.rot ? 'Yes' : 'No']) });
+      if (sh.cuts.length) {
+        table({ startY: doc.lastAutoTable.finalY + 14, head: [['Cut line', 'Direction', 'At', 'From', 'To']],
+          body: sh.cuts.map((c) => [c.line, c.dir, `${D.txt(c.at)} ${D.unit}`, `${D.txt(c.from)} ${D.unit}`, `${D.txt(c.to)} ${D.unit}`]) });
+      }
+    }
+
+    // page numbers
+    const pages = doc.getNumberOfPages();
+    for (let i = 1; i <= pages; i++) {
+      doc.setPage(i); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...MUTED);
+      doc.text(`SheetFit · page ${i} of ${pages}`, PW - M, PH - 20, { align: 'right' });
+    }
+    doc.save(`${fileStem()}.pdf`);
+  }
+
+  async function runExport(kind, fn) {
+    if (!state.result || state.running) return;
+    setExportEnabled(false);
+    exportMsg(`Preparing ${kind}…`);
+    try { await fn(); exportMsg(''); }
+    catch (err) { exportMsg(`Couldn't create the ${kind}: ${err.message}. Check your connection and try again.`, true); }
+    finally { setExportEnabled(!state.running); }
+  }
+  $('exportPdf').onclick = () => runExport('PDF', exportPdf);
+  $('exportXlsx').onclick = () => runExport('Excel file', exportXlsx);
+  $('exportCsv').onclick = () => runExport('CSV', async () => exportCsv());
+  setExportEnabled(false);
 
   // ---------- tabs ----------
   const TABS = ['layout', 'guillotine', 'advanced'];
