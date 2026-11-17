@@ -27,6 +27,11 @@ The page has three tabs. **Free cut** and **Guillotine cut** share the same inpu
 - **Free cut** (the default): boxes can go anywhere, for laser, CNC router or plotter cutting. Pick units, enter the sheet size and the gap your saw blade leaves, list the boxes (name, size, how many, and a **Rotation** toggle: *Can turn* or *Fixed*), and press **Find best layout**. Each sheet is drawn with every box labelled, along with sheets needed, material used, and what goes on each sheet. Imperial accepts fractions (`23 1/4`, `3-1/2`). Any field takes a unit suffix that overrides the current unit (`600mm`, `4ft`, `12"`). A **How to use** guide opens on the first visit and from the header.
 - **Preferences** (in the sidebar, on by default): *Keep matching boxes together* puts same-size boxes side by side. On the guillotine tab, *Fewest cuts* favours layouts that are quicker to cut, even if more material is left over.
 - **Guillotine cut**: every cut runs straight across the piece from edge to edge, so a guillotine cutter, panel saw or table saw can make it. Cut lines are drawn on each sheet, numbered in a valid cutting order, with a total cut count.
+- **Export** (next to "Your layout"): saves the current layout in the units shown on the page, with no algorithm details.
+  - **PDF:** a summary and cut list, then one page per sheet with a colour drawing (piece numbers, sizes, offcut, and numbered cut lines for guillotine) followed by that sheet's piece table and cut table.
+  - **Excel (.xlsx):** tabs for Summary, Cut list, Pieces, Sheets, Cuts (guillotine only) and Not placed (when a box is bigger than the sheet).
+  - **CSV:** one row per piece: sheet, piece number, name, width, height, position from the top-left corner, rotation, and size text.
+  - The PDF and Excel libraries (jsPDF, jsPDF-AutoTable, SheetJS) load from cdnjs the first time you export.
 - **Advanced**: algorithm settings (ants, rounds, seed, α, β, evaporation) with a **Run again** button, the comparison against a greedy baseline, and the insight views:
   - *Convergence* plots the best-so-far score, each round's best ant and the average ant against the greedy baseline. Ticks mark pheromone resets.
   - *Decisiveness* plots the entropy of the ants' choices over time.
